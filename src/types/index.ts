@@ -1,12 +1,17 @@
-// Cell state drives both rendering color and placement rules.
-// 'locked' = pre-set by level, not interactable.
-// 'source' / 'target' = special cells, always pre-set.
 export type CellState = 'empty' | 'occupied' | 'locked' | 'source' | 'target';
+
+// Extend this union as new parts are added (axle, pipe, etc.)
+export type PartType = 'gear';
+
+export interface Part {
+  type: PartType;
+}
 
 export interface Cell {
   col: number;
   row: number;
   state: CellState;
+  part: Part | null;
 }
 
 export interface GridConfig {

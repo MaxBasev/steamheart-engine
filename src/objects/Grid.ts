@@ -1,18 +1,23 @@
 import Phaser from 'phaser';
-import { Cell, CellState, GridConfig } from '../types';
+import { Cell, CellState, Part, GridConfig } from '../types';
 
-// Cell fill colors per state
-const CELL_COLORS: Record<CellState, number> = {
+// Base fill colors by cell state
+const STATE_COLORS: Record<CellState, number> = {
   empty:    0x2a2a2a,
-  occupied: 0x7a5228,  // warm copper-brown placeholder
+  occupied: 0x2a2a2a,  // overridden by part type in getCellColor()
   locked:   0x181818,
-  source:   0x1a3d1a,  // dark green
-  target:   0x3d1a1a,  // dark red
+  source:   0x1a3d1a,
+  target:   0x3d1a1a,
 };
 
-const GRID_LINE_COLOR  = 0x444444;
-const GRID_LINE_ALPHA  = 0.7;
-const CELL_PADDING     = 2;  // pixels of gap between cells
+// Per-part-type fill color
+const PART_COLORS: Record<string, number> = {
+  gear: 0xb87820,  // brass
+};
+
+const GRID_LINE_COLOR = 0x444444;
+const GRID_LINE_ALPHA = 0.7;
+const CELL_PAD        = 2;
 
 export class Grid {
   private readonly scene: Phaser.Scene;
@@ -28,22 +33,24 @@ export class Grid {
     this.draw();
   }
 
-  // ── Public API ────────────────────────────────────────────────────────────
+  // ── Public API ─────────────────────────────────────────────────────────────
 
-  /** Place a part in an empty cell. Returns false if the cell is not empty. */
-  placeAt(col: number, row: number): boolean {
+  /** Place a part in an empty cell. Returns false if cell is not empty. */
+  placeAt(col: number, row: number, part: Part): boolean {
     const cell = this.getCell(col, row);
     if (!cell || cell.state !== 'empty') return false;
     cell.state = 'occupied';
+    cell.part  = part;
     this.draw();
     return true;
   }
 
-  /** Force-set any cell to a given state (used by level loader). */
-  setCell(col: number, row: number, state: CellState): void {
+  /** Force-set state (and optionally a part) on any cell. Used by level loader. */
+  setCell(col: number, row: number, state: CellState, part: Part | null = null): void {
     const cell = this.getCell(col, row);
     if (!cell) return;
     cell.state = state;
+    cell.part  = part;
     this.draw();
   }
 
@@ -51,10 +58,15 @@ export class Grid {
     return this.cells[row]?.[col] ?? null;
   }
 
-  /**
-   * Convert a world (pixel) position to a grid coordinate.
-   * Returns null if the position is outside the grid bounds.
-   */
+  getSourceCell(): Cell | null {
+    return this.findFirst('source');
+  }
+
+  getTargetCell(): Cell | null {
+    return this.findFirst('target');
+  }
+
+  /** Pixel → grid coordinate. Returns null if outside grid bounds. */
   worldToCell(worldX: number, worldY: number): { col: number; row: number } | null {
     const { cellSize, originX, originY, cols, rows } = this.config;
     const col = Math.floor((worldX - originX) / cellSize);
@@ -63,7 +75,7 @@ export class Grid {
     return { col, row };
   }
 
-  /** Returns the top-left pixel coordinate of a grid cell. */
+  /** Top-left pixel coordinate of a cell. */
   cellToWorld(col: number, row: number): { x: number; y: number } {
     const { cellSize, originX, originY } = this.config;
     return {
@@ -72,34 +84,46 @@ export class Grid {
     };
   }
 
-  get cellSize(): number {
-    return this.config.cellSize;
-  }
+  get cellSize(): number { return this.config.cellSize; }
+  get cols(): number     { return this.config.cols; }
+  get rows(): number     { return this.config.rows; }
 
-  // ── Rendering ─────────────────────────────────────────────────────────────
+  // ── Rendering ──────────────────────────────────────────────────────────────
 
-  /** Full redraw from cell state data. Called after every state change. */
   draw(): void {
     const { cols, rows, cellSize, originX, originY } = this.config;
     const g = this.graphics;
     g.clear();
 
-    // 1. Cell fill
+    // 1. Cell fills
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const cell = this.cells[row][col];
         const { x, y } = this.cellToWorld(col, row);
-        g.fillStyle(CELL_COLORS[cell.state], 1);
-        g.fillRect(
-          x + CELL_PADDING,
-          y + CELL_PADDING,
-          cellSize - CELL_PADDING * 2,
-          cellSize - CELL_PADDING * 2,
-        );
+
+        g.fillStyle(this.getCellColor(cell), 1);
+        g.fillRect(x + CELL_PAD, y + CELL_PAD, cellSize - CELL_PAD * 2, cellSize - CELL_PAD * 2);
+
+        // Gear: draw a simple hub circle so it reads as a gear at a glance
+        if (cell.part?.type === 'gear') {
+          const cx = x + cellSize / 2;
+          const cy = y + cellSize / 2;
+          const r  = cellSize * 0.18;
+          g.fillStyle(0x7a5010, 1);
+          g.fillCircle(cx, cy, r);
+        }
+
+        // Source / target: small inner highlight square
+        if (cell.state === 'source' || cell.state === 'target') {
+          const color = cell.state === 'source' ? 0x44ff44 : 0xff4444;
+          g.fillStyle(color, 0.5);
+          const inset = CELL_PAD + 4;
+          g.fillRect(x + inset, y + inset, cellSize - inset * 2, cellSize - inset * 2);
+        }
       }
     }
 
-    // 2. Grid lines (drawn after fills so they sit on top)
+    // 2. Grid lines
     g.lineStyle(1, GRID_LINE_COLOR, GRID_LINE_ALPHA);
     for (let col = 0; col <= cols; col++) {
       const x = originX + col * cellSize;
@@ -109,34 +133,25 @@ export class Grid {
       const y = originY + row * cellSize;
       g.lineBetween(originX, y, originX + cols * cellSize, y);
     }
-
-    // 3. Source / target labels (tiny text markers)
-    this.drawMarkers();
   }
 
-  private drawMarkers(): void {
-    const { cols, rows, cellSize } = this.config;
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const cell = this.cells[row][col];
-        if (cell.state !== 'source' && cell.state !== 'target') continue;
-        const { x, y } = this.cellToWorld(col, row);
-        const label = cell.state === 'source' ? 'SRC' : 'TGT';
-        const color = cell.state === 'source' ? 0x44ff44 : 0xff4444;
-        this.graphics.fillStyle(color, 0.6);
-        this.graphics.fillRect(
-          x + CELL_PADDING + 2,
-          y + CELL_PADDING + 2,
-          cellSize - (CELL_PADDING * 2) - 4,
-          cellSize - (CELL_PADDING * 2) - 4,
-        );
-        // We use existing graphics; text labels added by GameScene overlay if needed
-        void label; // suppress unused warning — text done in scene
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  private getCellColor(cell: Cell): number {
+    if (cell.state === 'occupied' && cell.part) {
+      return PART_COLORS[cell.part.type] ?? STATE_COLORS.occupied;
+    }
+    return STATE_COLORS[cell.state];
+  }
+
+  private findFirst(state: CellState): Cell | null {
+    for (const row of this.cells) {
+      for (const cell of row) {
+        if (cell.state === state) return cell;
       }
     }
+    return null;
   }
-
-  // ── Private helpers ───────────────────────────────────────────────────────
 
   private buildCells(): Cell[][] {
     const { cols, rows } = this.config;
@@ -145,6 +160,7 @@ export class Grid {
         col,
         row,
         state: 'empty' as CellState,
+        part: null,
       })),
     );
   }
