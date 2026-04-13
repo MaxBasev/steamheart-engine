@@ -21,3 +21,19 @@ export interface GridConfig {
   originX: number;   // pixel x of the top-left corner of the grid
   originY: number;   // pixel y of the top-left corner of the grid
 }
+
+// ── Level data ────────────────────────────────────────────────────────────────
+
+export interface LevelData {
+  id:          string;
+  title:       string;
+  cols:        number;
+  rows:        number;
+  sourceCol:   number;
+  sourceRow:   number;
+  targetCol:   number;
+  targetRow:   number;
+  lockedCells: Array<{ col: number; row: number }>;
+  queue:       PartType[];
+  instruction?: string;   // optional hint shown in HUD
+}
