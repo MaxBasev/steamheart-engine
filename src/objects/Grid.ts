@@ -13,6 +13,7 @@ const STATE_COLORS: Record<CellState, number> = {
 // Per-part-type fill color
 const PART_COLORS: Record<string, number> = {
   gear: 0xb87820,  // brass
+  axle: 0x7a5a20,  // darker brass
 };
 
 const GRID_LINE_COLOR = 0x444444;
@@ -104,13 +105,30 @@ export class Grid {
         g.fillStyle(this.getCellColor(cell), 1);
         g.fillRect(x + CELL_PAD, y + CELL_PAD, cellSize - CELL_PAD * 2, cellSize - CELL_PAD * 2);
 
-        // Gear: draw a simple hub circle so it reads as a gear at a glance
+        // Gear: hub circle
         if (cell.part?.type === 'gear') {
           const cx = x + cellSize / 2;
           const cy = y + cellSize / 2;
-          const r  = cellSize * 0.18;
           g.fillStyle(0x7a5010, 1);
-          g.fillCircle(cx, cy, r);
+          g.fillCircle(cx, cy, cellSize * 0.18);
+        }
+
+        // Axle: horizontal rod or vertical rod — orientation comes from rotation
+        if (cell.part?.type === 'axle') {
+          const cx       = x + cellSize / 2;
+          const cy       = y + cellSize / 2;
+          const horiz    = cell.part.rotation % 2 === 0;
+          const thick    = 10;
+          const margin   = CELL_PAD + 4;
+          g.fillStyle(0x5a4010, 1);
+          if (horiz) {
+            g.fillRect(x + margin, cy - thick / 2, cellSize - margin * 2, thick);
+          } else {
+            g.fillRect(cx - thick / 2, y + margin, thick, cellSize - margin * 2);
+          }
+          // Small center hub so the axle reads clearly
+          g.fillStyle(0x3a2808, 1);
+          g.fillCircle(cx, cy, thick * 0.45);
         }
 
         // Source / target: small inner highlight square

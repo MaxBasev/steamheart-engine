@@ -1,4 +1,4 @@
-import { LevelData } from '../types';
+import { LevelData, PressureConfig } from '../types';
 
 // All levels in play order.
 // queue[0] is the first part the player receives; the array is consumed left-to-right.
@@ -48,5 +48,59 @@ export const LEVELS: LevelData[] = [
       'gear', 'gear', 'gear', 'gear', 'gear', 'gear', 'gear',
     ],
     instruction: 'Blocked cells obstruct the direct path — route around them.',
+  },
+
+  // ── Level 3 ─────────────────────────────────────────────────────────────────
+  // Introduces the axle. The grid is only 3 rows tall — no room for detours.
+  // 4 gears + 1 axle = exactly 5 parts for a 5-cell straight path.
+  // The axle MUST be placed horizontally (rotation 0 or 2).
+  // A vertical axle at any position in the path severs the chain.
+  //
+  // Queue order: gear gear [AXLE] gear gear
+  // The axle arrives mid-sequence so the player has already started building
+  // when the orientation decision hits.
+  {
+    id:        'level_03',
+    title:     'Level 3 — The Shaft',
+    cols:      7,
+    rows:      3,
+    sourceCol: 0,
+    sourceRow: 1,
+    targetCol: 6,
+    targetRow: 1,
+    lockedCells: [],
+    queue: ['gear', 'gear', 'axle', 'gear', 'gear'],
+    instruction: 'Axles only transmit along their axis. Press [R] to rotate before placing.',
+  },
+
+  // ── Level 4 ─────────────────────────────────────────────────────────────────
+  // Introduces pressure. Straight-ish 8×5 grid with a small detour around one
+  // locked cell. Minimum path: 7 cells. Queue: exactly 7 gears — no spares.
+  // Pressure rises at 5/s → 100 in 20 seconds. The player must place quickly
+  // and activate before the boiler overloads.
+  //
+  // Locked cell at (4,2) forces a one-cell detour: go through row 1 or row 3.
+  // One valid path (below blocker):
+  //   (1,2)→(2,2)→(3,2)→(3,3)→(4,3)→(5,3)→(5,2)→(6,2)
+  {
+    id:        'level_04',
+    title:     'Level 4 — The Boiler',
+    cols:      8,
+    rows:      5,
+    sourceCol: 0,
+    sourceRow: 2,
+    targetCol: 7,
+    targetRow: 2,
+    lockedCells: [
+      { col: 4, row: 2 },
+    ],
+    queue: ['gear', 'gear', 'gear', 'gear', 'gear', 'gear', 'gear'],
+    instruction: 'Pressure rises — activate before it reaches 100!',
+    pressure: {
+      enabled:       true,
+      startValue:    0,
+      risePerSecond: 5,
+      failAt:        100,
+    } satisfies PressureConfig,
   },
 ];
