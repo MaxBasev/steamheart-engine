@@ -10,11 +10,43 @@ const STATE_COLORS: Record<CellState, number> = {
   target:   0x3d1a1a,
 };
 
-// Per-part-type fill color
+// Per-part-type fill color (used when no sprite is available)
 const PART_COLORS: Record<string, number> = {
   gear: 0xb87820,  // brass
   axle: 0x7a5a20,  // darker brass
 };
+
+// ── Gear specs ────────────────────────────────────────────────────────────────
+// All gears must extend past the cell boundary so teeth physically overlap with
+// neighbours. BASE_DIAMETER > cellSize guarantees this for every size tier.
+// The per-spec SIZE_SCALE then adds subtle size variation on top:
+//   small (12t):  cellSize * 1.05  →  ~67 px
+//   medium (16t): cellSize * 1.12  →  ~72 px
+//   large (20t):  cellSize * 1.20  →  ~77 px
+//
+// Phase offset = 180 / toothCount so adjacent teeth interlock on placement.
+const GEAR_SIZE_SMALL  = 1.05;
+const GEAR_SIZE_MEDIUM = 1.12;
+const GEAR_SIZE_LARGE  = 1.20;
+
+interface GearSpec {
+  textureKey: string;
+  toothCount: number;
+  sizeScale:  number;   // multiplier on cellSize for render diameter
+}
+
+// Sprites ordered small → large. Chosen by (col*7 + row*13) % GEAR_SPECS.length.
+const GEAR_SPECS: GearSpec[] = [
+  { textureKey: 'gear-1', toothCount: 12, sizeScale: GEAR_SIZE_SMALL  },
+  { textureKey: 'gear-7', toothCount: 12, sizeScale: GEAR_SIZE_SMALL  },
+  { textureKey: 'gear-6', toothCount: 14, sizeScale: GEAR_SIZE_MEDIUM },
+  { textureKey: 'gear-2', toothCount: 16, sizeScale: GEAR_SIZE_MEDIUM },
+  { textureKey: 'gear-5', toothCount: 16, sizeScale: GEAR_SIZE_MEDIUM },
+  { textureKey: 'gear-4', toothCount: 20, sizeScale: GEAR_SIZE_LARGE  },
+  { textureKey: 'gear-3', toothCount: 20, sizeScale: GEAR_SIZE_LARGE  },
+];
+
+const GEAR_DEG_PER_SEC = 45;
 
 const GRID_LINE_COLOR = 0x444444;
 const GRID_LINE_ALPHA = 0.7;
@@ -25,13 +57,68 @@ export class Grid {
   private readonly config: GridConfig;
   private readonly cells: Cell[][];
   private readonly graphics: Phaser.GameObjects.Graphics;
+  // Sprite pool keyed by "col,row" — one Image per occupied cell that has a texture
+  private readonly sprites    = new Map<string, Phaser.GameObjects.Image>();
+  // Accumulated rotation angle (degrees) per gear cell
+  private readonly gearAngles = new Map<string, number>();
 
   constructor(scene: Phaser.Scene, config: GridConfig) {
     this.scene    = scene;
     this.config   = config;
     this.cells    = this.buildCells();
+
     this.graphics = scene.add.graphics();
+    this.graphics.setDepth(1);
     this.draw();
+  }
+
+  // ── Floor tile layer ───────────────────────────────────────────────────────
+
+  /** Call once from GameScene after all setCell() calls are done. */
+  buildFloorTiles(): void {
+    const { cols, rows, cellSize } = this.config;
+    const tileSize = cellSize - CELL_PAD * 2;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const cell    = this.cells[row][col];
+        const { x, y } = this.cellToWorld(col, row);
+        const cx      = x + cellSize / 2;
+        const cy      = y + cellSize / 2;
+
+        // Pick texture key based on cell state
+        const hash   = (col * 7 + row * 13) % 5;
+        let key: string;
+        if (cell.state === 'source') {
+          key = 'source-tile';
+        } else if (cell.state === 'target') {
+          key = 'target-tile';
+        } else if (cell.state === 'locked') {
+          key = `floor-block-${((col * 7 + row * 13) % 2) + 1}`;
+        } else {
+          key = `floor-${hash + 1}`;
+        }
+
+        // Fallback: if textures aren't loaded yet just skip
+        if (!this.scene.textures.exists(key)) continue;
+
+        const img = this.scene.add.image(cx, cy, key);
+        const tex = Math.max(img.width, img.height) || tileSize;
+        img.setScale(tileSize / tex);
+        img.setDepth(0);
+
+        // Source / target: overlay the looping energy animation at ~half tile size
+        const animKey  = cell.state === 'source' ? 'source-spin'  : cell.state === 'target' ? 'target-pulse' : null;
+        const animTex0 = cell.state === 'source' ? 'source-anim-1': cell.state === 'target' ? 'target-anim-1': null;
+        if (animKey && animTex0 && this.scene.anims.exists(animKey)) {
+          const anim    = this.scene.add.sprite(cx, cy, animTex0);
+          const animTex = Math.max(anim.width, anim.height) || tileSize;
+          anim.setScale((tileSize * 0.52) / animTex);
+          anim.setDepth(0.5);
+          anim.play(animKey);
+        }
+      }
+    }
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -89,6 +176,23 @@ export class Grid {
   get cols(): number     { return this.config.cols; }
   get rows(): number     { return this.config.rows; }
 
+  /** Call every frame from GameScene.update() to animate placed parts. */
+  update(delta: number): void {
+    const dDeg = GEAR_DEG_PER_SEC * (delta / 1000);
+
+    for (const [key, img] of this.sprites) {
+      const [col, row] = key.split(',').map(Number);
+      const cell = this.cells[row]?.[col];
+      if (cell?.part?.type !== 'gear') continue;
+
+      // Checkerboard: even sum → clockwise, odd sum → counter-clockwise
+      const dir   = (col + row) % 2 === 0 ? 1 : -1;
+      const angle = (this.gearAngles.get(key) ?? 0) + dir * dDeg;
+      this.gearAngles.set(key, angle);
+      img.setAngle(angle);
+    }
+  }
+
   // ── Rendering ──────────────────────────────────────────────────────────────
 
   draw(): void {
@@ -96,52 +200,78 @@ export class Grid {
     const g = this.graphics;
     g.clear();
 
+    // Track which sprite keys are still needed this frame
+    const needed = new Set<string>();
+
     // 1. Cell fills
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const cell = this.cells[row][col];
         const { x, y } = this.cellToWorld(col, row);
+        const cx = x + cellSize / 2;
+        const cy = y + cellSize / 2;
 
-        g.fillStyle(this.getCellColor(cell), 1);
-        g.fillRect(x + CELL_PAD, y + CELL_PAD, cellSize - CELL_PAD * 2, cellSize - CELL_PAD * 2);
+        // Pick gear spec for this cell (deterministic by position)
+        const specIndex = cell.part?.type === 'gear'
+          ? (col * 7 + row * 13) % GEAR_SPECS.length
+          : -1;
+        const spec      = specIndex >= 0 ? GEAR_SPECS[specIndex] : null;
+        const useSprite = !!spec && this.scene.textures.exists(spec.textureKey);
 
-        // Gear: hub circle
-        if (cell.part?.type === 'gear') {
-          const cx = x + cellSize / 2;
-          const cy = y + cellSize / 2;
-          g.fillStyle(0x7a5010, 1);
-          g.fillCircle(cx, cy, cellSize * 0.18);
+        // Sprite-based part rendering
+        if (useSprite && spec) {
+          const key = `${col},${row}`;
+          needed.add(key);
+          let img = this.sprites.get(key);
+          if (!img) {
+            img = this.scene.add.image(cx, cy, spec.textureKey);
+            this.sprites.set(key, img);
+            // Phase offset = half tooth pitch of THIS gear so its teeth
+            // interlock with the neighbour's teeth at the contact point.
+            const meshOffset = (col + row) % 2 === 0
+              ? 0
+              : 180 / spec.toothCount;
+            this.gearAngles.set(key, meshOffset);
+          }
+          // Diameter = cellSize * sizeScale so all gears extend past the
+          // cell boundary and teeth visually overlap with neighbours.
+          const diameter = cellSize * spec.sizeScale;
+          const texMax   = Math.max(img.width || diameter, img.height || diameter);
+          img.setScale(diameter / texMax);
+          img.setPosition(cx, cy);
+          img.setDepth(2);
+          img.setAngle(this.gearAngles.get(key) ?? 0);
         }
 
-        // Axle: horizontal rod or vertical rod — orientation comes from rotation
+        // Programmatic axle (no sprite yet)
         if (cell.part?.type === 'axle') {
-          const cx       = x + cellSize / 2;
-          const cy       = y + cellSize / 2;
-          const horiz    = cell.part.rotation % 2 === 0;
-          const thick    = 10;
-          const margin   = CELL_PAD + 4;
+          const horiz  = cell.part.rotation % 2 === 0;
+          const thick  = 10;
+          const margin = CELL_PAD + 4;
           g.fillStyle(0x5a4010, 1);
           if (horiz) {
             g.fillRect(x + margin, cy - thick / 2, cellSize - margin * 2, thick);
           } else {
             g.fillRect(cx - thick / 2, y + margin, thick, cellSize - margin * 2);
           }
-          // Small center hub so the axle reads clearly
           g.fillStyle(0x3a2808, 1);
           g.fillCircle(cx, cy, thick * 0.45);
         }
 
-        // Source / target: small inner highlight square
-        if (cell.state === 'source' || cell.state === 'target') {
-          const color = cell.state === 'source' ? 0x44ff44 : 0xff4444;
-          g.fillStyle(color, 0.5);
-          const inset = CELL_PAD + 4;
-          g.fillRect(x + inset, y + inset, cellSize - inset * 2, cellSize - inset * 2);
-        }
+        // Source and target both have dedicated sprites — no overlay needed
       }
     }
 
-    // 2. Grid lines
+    // Remove sprites whose cells are no longer occupied
+    for (const [key, img] of this.sprites) {
+      if (!needed.has(key)) {
+        img.destroy();
+        this.sprites.delete(key);
+        this.gearAngles.delete(key);
+      }
+    }
+
+    // 2. Grid lines (drawn on top of fills, under sprites via depth)
     g.lineStyle(1, GRID_LINE_COLOR, GRID_LINE_ALPHA);
     for (let col = 0; col <= cols; col++) {
       const x = originX + col * cellSize;

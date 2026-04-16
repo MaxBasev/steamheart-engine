@@ -74,14 +74,13 @@ export const LEVELS: LevelData[] = [
   },
 
   // ── Level 4 ─────────────────────────────────────────────────────────────────
-  // Introduces pressure. Straight-ish 8×5 grid with a small detour around one
-  // locked cell. Minimum path: 7 cells. Queue: exactly 7 gears — no spares.
+  // Introduces pressure. Straight-ish 8×5 grid with a detour around one
+  // locked cell. Minimum path: 8 cells. Queue: 8 gears — no spares.
   // Pressure rises at 5/s → 100 in 20 seconds. The player must place quickly
   // and activate before the boiler overloads.
   //
-  // Locked cell at (4,2) forces a one-cell detour: go through row 1 or row 3.
-  // One valid path (below blocker):
-  //   (1,2)→(2,2)→(3,2)→(3,3)→(4,3)→(5,3)→(5,2)→(6,2)
+  // Locked cell at (4,2) forces a row detour. One valid path (above blocker):
+  //   (1,2)→(2,2)→(3,2)→(3,1)→(4,1)→(5,1)→(5,2)→(6,2)
   {
     id:        'level_04',
     title:     'Level 4 — The Boiler',
@@ -94,7 +93,7 @@ export const LEVELS: LevelData[] = [
     lockedCells: [
       { col: 4, row: 2 },
     ],
-    queue: ['gear', 'gear', 'gear', 'gear', 'gear', 'gear', 'gear'],
+    queue: ['gear', 'gear', 'gear', 'gear', 'gear', 'gear', 'gear', 'gear'],
     instruction: 'Pressure rises — activate before it reaches 100!',
     pressure: {
       enabled:       true,

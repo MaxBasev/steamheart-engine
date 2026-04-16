@@ -101,6 +101,9 @@ export class GameScene extends Phaser.Scene {
       this.grid.setCell(lc.col, lc.row, 'locked');
     }
 
+    // Floor tiles read final cell states — must come after all setCell() calls
+    this.grid.buildFloorTiles();
+
     // Z-order: grid → debug → hover → result overlay (last = on top)
     this.debugGraphics = this.add.graphics();
     this.hoverGraphics = this.add.graphics();
@@ -246,6 +249,8 @@ export class GameScene extends Phaser.Scene {
   // ── Game loop ──────────────────────────────────────────────────────────────
 
   update(_time: number, delta: number): void {
+    this.grid.update(delta);
+
     if (this.state.isActivated) return;
 
     const cfg = this.currentLevel.pressure;
