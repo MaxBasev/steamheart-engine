@@ -22,9 +22,7 @@ export class PreloadScene extends Phaser.Scene {
     for (let i = 1; i <= 5; i++) {
       this.load.image(`floor-${i}`, `assets/floor/floor-00${i}.png`);
     }
-    for (let i = 1; i <= 6; i++) {
-      this.load.image(`back-${i}`, `assets/background/back-0${i}.png`);
-    }
+    // Background tiles are lazy-loaded in GameScene (decorative only)
 
     this.load.image('floor-block-1', 'assets/floor/floor-block-001.png');
     this.load.image('floor-block-2', 'assets/floor/floor-block-002.png');

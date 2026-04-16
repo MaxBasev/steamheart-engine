@@ -160,16 +160,34 @@ export class GameScene extends Phaser.Scene {
   private addBackground(): void {
     const { width, height } = this.scale;
 
-    // Tile size = 2× game cell size
-    const tileSize = CELL_SIZE * 2;
+    // Dark overlay is always drawn immediately (no texture needed)
+    this.add.graphics()
+      .setDepth(-1)
+      .fillStyle(0x000000, 0.7)
+      .fillRect(0, 0, width, height);
 
-    // Cover full canvas — extend one tile beyond each edge to avoid gaps
+    // Background tiles: lazy-load and place once ready
+    const alreadyLoaded = this.textures.exists('back-1');
+    if (alreadyLoaded) {
+      this.placeBackgroundTiles();
+      return;
+    }
+
+    for (let i = 1; i <= 6; i++) {
+      this.load.image(`back-${i}`, `assets/background/back-0${i}.png`);
+    }
+    this.load.once('complete', () => this.placeBackgroundTiles());
+    this.load.start();
+  }
+
+  private placeBackgroundTiles(): void {
+    const { width, height } = this.scale;
+    const tileSize = CELL_SIZE * 2;
     const cols = Math.ceil(width  / tileSize) + 1;
     const rows = Math.ceil(height / tileSize) + 1;
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
-        // Deterministic variety — same tile always appears at the same position
         const variant = (col * 7 + row * 13) % 6 + 1;
         const key     = `back-${variant}`;
         if (!this.textures.exists(key)) continue;
@@ -181,12 +199,6 @@ export class GameScene extends Phaser.Scene {
         img.setScale(tileSize / tex).setDepth(-2);
       }
     }
-
-    // 50% dark overlay — pushes background back so the game grid stands out
-    this.add.graphics()
-      .setDepth(-1)
-      .fillStyle(0x000000, 0.7)
-      .fillRect(0, 0, width, height);
   }
 
   // ── Input ──────────────────────────────────────────────────────────────────
