@@ -71,6 +71,7 @@ export class GameScene extends Phaser.Scene {
   private currentLevelIndex = 0;
   private currentLevel!:    LevelData;
   private state: GameState  = freshState(LEVELS[0]);
+  private soundMuted        = false;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -123,10 +124,59 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setVisible(false);
 
+    this.addBackground();
+    this.startMusic();
     this.setupInput();
     this.addHUD(level);
     this.updateQueueHUD();
     this.updatePressureHUD();
+  }
+
+  // ── Music ─────────────────────────────────────────────────────────────────
+
+  private startMusic(): void {
+    // Keep music playing across level restarts — don't restart if already running
+    if (this.sound.get('music-bg')) return;
+
+    this.sound.play('music-bg', {
+      loop:   true,
+      volume: 0.5,
+      mute:   this.soundMuted,
+    });
+  }
+
+  // ── Background ────────────────────────────────────────────────────────────
+
+  private addBackground(): void {
+    const { width, height } = this.scale;
+
+    // Tile size = 2× game cell size
+    const tileSize = CELL_SIZE * 2;
+
+    // Cover full canvas — extend one tile beyond each edge to avoid gaps
+    const cols = Math.ceil(width  / tileSize) + 1;
+    const rows = Math.ceil(height / tileSize) + 1;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        // Deterministic variety — same tile always appears at the same position
+        const variant = (col * 7 + row * 13) % 6 + 1;
+        const key     = `back-${variant}`;
+        if (!this.textures.exists(key)) continue;
+
+        const cx  = col * tileSize + tileSize / 2;
+        const cy  = row * tileSize + tileSize / 2;
+        const img = this.add.image(cx, cy, key);
+        const tex = Math.max(img.width, img.height) || tileSize;
+        img.setScale(tileSize / tex).setDepth(-2);
+      }
+    }
+
+    // 50% dark overlay — pushes background back so the game grid stands out
+    this.add.graphics()
+      .setDepth(-1)
+      .fillStyle(0x000000, 0.7)
+      .fillRect(0, 0, width, height);
   }
 
   // ── Input ──────────────────────────────────────────────────────────────────
@@ -238,11 +288,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onNextLevel(): void {
+    this.grid.destroy();
     this.scene.restart({ levelIndex: this.currentLevelIndex + 1 });
   }
 
   private onRetry(): void {
-    // Restart the same level — queue, grid, and rotation rebuilt from level data.
+    this.grid.destroy();
     this.scene.restart({ levelIndex: this.currentLevelIndex });
   }
 
@@ -250,6 +301,7 @@ export class GameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     this.grid.update(delta);
+
 
     if (this.state.isActivated) return;
 
@@ -305,6 +357,27 @@ export class GameScene extends Phaser.Scene {
     this.pressureText = this.add.text(12, 88, '', {
       fontSize: '13px', fontFamily: 'monospace', color: '#888888',
     }).setVisible(!!level.pressure?.enabled);
+
+    // Sound toggle button
+    this.addSoundToggle();
+  }
+
+  private addSoundToggle(): void {
+    const label = () => this.soundMuted ? '♪  OFF' : '♪  ON';
+
+    const btn = this.add.text(12, 112, label(), {
+      fontSize: '12px', fontFamily: 'monospace', color: '#444444',
+    });
+
+    btn.setInteractive({ useHandCursor: true })
+      .on('pointerover',  () => btn.setColor('#888888'))
+      .on('pointerout',   () => btn.setColor(this.soundMuted ? '#333333' : '#444444'))
+      .on('pointerdown',  () => {
+        this.soundMuted = !this.soundMuted;
+        this.sound.mute = this.soundMuted;
+        btn.setText(label());
+        btn.setColor(this.soundMuted ? '#333333' : '#444444');
+      });
   }
 
   private updateQueueHUD(): void {

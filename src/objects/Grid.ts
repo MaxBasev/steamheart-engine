@@ -61,6 +61,8 @@ export class Grid {
   private readonly sprites    = new Map<string, Phaser.GameObjects.Image>();
   // Accumulated rotation angle (degrees) per gear cell
   private readonly gearAngles = new Map<string, number>();
+  // All game objects created by buildFloorTiles() — destroyed explicitly on destroy()
+  private readonly floorObjects: Phaser.GameObjects.GameObject[] = [];
 
   constructor(scene: Phaser.Scene, config: GridConfig) {
     this.scene    = scene;
@@ -70,6 +72,16 @@ export class Grid {
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(1);
     this.draw();
+  }
+
+  /** Destroy all game objects owned by this Grid. Call before discarding the instance. */
+  destroy(): void {
+    this.graphics.destroy();
+    for (const img of this.sprites.values()) img.destroy();
+    this.sprites.clear();
+    this.gearAngles.clear();
+    for (const obj of this.floorObjects) obj.destroy();
+    this.floorObjects.length = 0;
   }
 
   // ── Floor tile layer ───────────────────────────────────────────────────────
@@ -106,6 +118,7 @@ export class Grid {
         const tex = Math.max(img.width, img.height) || tileSize;
         img.setScale(tileSize / tex);
         img.setDepth(0);
+        this.floorObjects.push(img);
 
         // Source / target: overlay the looping energy animation at ~half tile size
         const animKey  = cell.state === 'source' ? 'source-spin'  : cell.state === 'target' ? 'target-pulse' : null;
@@ -116,6 +129,7 @@ export class Grid {
           anim.setScale((tileSize * 0.52) / animTex);
           anim.setDepth(0.5);
           anim.play(animKey);
+          this.floorObjects.push(anim);
         }
       }
     }
@@ -226,12 +240,7 @@ export class Grid {
           if (!img) {
             img = this.scene.add.image(cx, cy, spec.textureKey);
             this.sprites.set(key, img);
-            // Phase offset = half tooth pitch of THIS gear so its teeth
-            // interlock with the neighbour's teeth at the contact point.
-            const meshOffset = (col + row) % 2 === 0
-              ? 0
-              : 180 / spec.toothCount;
-            this.gearAngles.set(key, meshOffset);
+            this.gearAngles.set(key, this.computeGearPhase(col, row, spec));
           }
           // Diameter = cellSize * sizeScale so all gears extend past the
           // cell boundary and teeth visually overlap with neighbours.
@@ -284,6 +293,39 @@ export class Grid {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Compute the initial rotation angle for a newly placed gear so its teeth
+   * interlock with any already-placed gear neighbour.
+   *
+   * If neighbour A has angle θA and NA teeth, and new gear B has NB teeth:
+   *   θB = 180/NB − θA × (NA/NB)
+   *
+   * This ensures a tooth of A aligns with a valley of B at their contact point.
+   * Falls back to checkerboard half-pitch offset when no gear neighbour exists yet.
+   */
+  private computeGearPhase(col: number, row: number, spec: GearSpec): number {
+    const dirs = [
+      { dc: 1, dr: 0 }, { dc: -1, dr: 0 },
+      { dc: 0, dr: 1 }, { dc: 0, dr: -1 },
+    ];
+
+    for (const { dc, dr } of dirs) {
+      const nc = col + dc;
+      const nr = row + dr;
+      const neighborCell = this.cells[nr]?.[nc];
+      if (neighborCell?.part?.type !== 'gear') continue;
+
+      const neighborAngle = this.gearAngles.get(`${nc},${nr}`);
+      if (neighborAngle === undefined) continue;
+
+      const nSpec = GEAR_SPECS[(nc * 7 + nr * 13) % GEAR_SPECS.length];
+      return 180 / spec.toothCount - neighborAngle * (nSpec.toothCount / spec.toothCount);
+    }
+
+    // No gear neighbour yet — checkerboard half-pitch fallback
+    return (col + row) % 2 === 0 ? 0 : 180 / spec.toothCount;
+  }
 
   private getCellColor(cell: Cell): number {
     if (cell.state === 'occupied' && cell.part) {
