@@ -108,21 +108,23 @@ export class GameScene extends Phaser.Scene {
     // Z-order: grid → debug → hover → result overlay (last = on top)
     this.debugGraphics = this.add.graphics();
     this.hoverGraphics = this.add.graphics();
-    this.resultGraphics = this.add.graphics();
+    this.resultGraphics = this.add.graphics().setDepth(10);
 
     this.resultHeadline = this.add
       .text(width / 2, height / 2 - 22, '', {
         fontSize: '26px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ffffff',
       })
       .setOrigin(0.5)
-      .setVisible(false);
+      .setVisible(false)
+      .setDepth(11);
 
     this.resultSubtext = this.add
       .text(width / 2, height / 2 + 22, '', {
         fontSize: '13px', fontFamily: 'monospace', color: '#aaaaaa',
       })
       .setOrigin(0.5)
-      .setVisible(false);
+      .setVisible(false)
+      .setDepth(11);
 
     this.addBackground();
     this.startMusic();
