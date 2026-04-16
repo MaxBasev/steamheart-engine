@@ -63,6 +63,10 @@ export class Grid {
   private readonly gearAngles = new Map<string, number>();
   // All game objects created by buildFloorTiles() — destroyed explicitly on destroy()
   private readonly floorObjects: Phaser.GameObjects.GameObject[] = [];
+  // Reference to the target floor tile so we can tint it on success
+  private targetFloorImage: Phaser.GameObjects.Image | null = null;
+  // Speed multiplier applied to gear rotation — tweened on win/fail
+  private gearSpeedMult = 1.0;
 
   constructor(scene: Phaser.Scene, config: GridConfig) {
     this.scene    = scene;
@@ -120,6 +124,8 @@ export class Grid {
         img.setDepth(0);
         this.floorObjects.push(img);
 
+        if (cell.state === 'target') this.targetFloorImage = img;
+
         // Source / target: overlay the looping energy animation at ~half tile size
         const animKey  = cell.state === 'source' ? 'source-spin'  : cell.state === 'target' ? 'target-pulse' : null;
         const animTex0 = cell.state === 'source' ? 'source-anim-1': cell.state === 'target' ? 'target-anim-1': null;
@@ -136,6 +142,13 @@ export class Grid {
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
+
+  /** Tint the target floor tile green to signal a successful activation. */
+  setTargetActivated(): void {
+    if (this.targetFloorImage) {
+      this.targetFloorImage.setTint(0x44ff88);
+    }
+  }
 
   /** Place a part in an empty cell. Returns false if cell is not empty. */
   placeAt(col: number, row: number, part: Part): boolean {
@@ -192,7 +205,7 @@ export class Grid {
 
   /** Call every frame from GameScene.update() to animate placed parts. */
   update(delta: number): void {
-    const dDeg = GEAR_DEG_PER_SEC * (delta / 1000);
+    const dDeg = GEAR_DEG_PER_SEC * this.gearSpeedMult * (delta / 1000);
 
     for (const [key, img] of this.sprites) {
       const [col, row] = key.split(',').map(Number);
@@ -204,6 +217,30 @@ export class Grid {
       const angle = (this.gearAngles.get(key) ?? 0) + dir * dDeg;
       this.gearAngles.set(key, angle);
       img.setAngle(angle);
+    }
+  }
+
+  /** Tween gear speed: win = spin up then settle, fail = slow to stop. */
+  animateGearSpeed(valid: boolean): void {
+    this.scene.tweens.killTweensOf(this);
+
+    if (valid) {
+      // Burst to 4× then settle at 2×
+      this.scene.tweens.chain({
+        targets: this,
+        tweens: [
+          { gearSpeedMult: 4.0, duration: 400, ease: 'Quad.easeIn' },
+          { gearSpeedMult: 2.0, duration: 600, ease: 'Quad.easeOut' },
+        ],
+      });
+    } else {
+      // Decelerate to full stop
+      this.scene.tweens.add({
+        targets:  this,
+        gearSpeedMult: 0,
+        duration: 1200,
+        ease:     'Quad.easeOut',
+      });
     }
   }
 

@@ -111,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     this.resultGraphics = this.add.graphics().setDepth(10);
 
     this.resultHeadline = this.add
-      .text(width / 2, height / 2 - 22, '', {
+      .text(width / 2, 72, '', {
         fontSize: '26px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ffffff',
       })
       .setOrigin(0.5)
@@ -119,7 +119,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(11);
 
     this.resultSubtext = this.add
-      .text(width / 2, height / 2 + 22, '', {
+      .text(width / 2, 108, '', {
         fontSize: '13px', fontFamily: 'monospace', color: '#aaaaaa',
       })
       .setOrigin(0.5)
@@ -289,7 +289,15 @@ export class GameScene extends Phaser.Scene {
 
     this.hoverGraphics.clear();
     this.drawChainDebug(result);
-    this.showResult(result.valid);
+    this.grid.animateGearSpeed(result.valid);
+
+    if (result.valid) {
+      // Turn target green first, then show the overlay after a short pause
+      this.grid.setTargetActivated();
+      this.time.delayedCall(600, () => this.showResult(true));
+    } else {
+      this.showResult(false);
+    }
 
     console.log(result.valid ? 'VALID' : 'INVALID');
   }
@@ -456,13 +464,10 @@ export class GameScene extends Phaser.Scene {
     const g = this.resultGraphics;
     g.clear();
 
-    g.fillStyle(0x000000, OVERLAY_DIM_ALPHA);
-    g.fillRect(0, 0, width, height);
-
     const panelW = 460;
     const panelH = 100;
     const panelX = (width  - panelW) / 2;
-    const panelY = (height - panelH) / 2;
+    const panelY = 40;
 
     g.fillStyle(valid ? WIN_PANEL_COLOR : FAIL_PANEL_COLOR, PANEL_FILL_ALPHA);
     g.fillRoundedRect(panelX, panelY, panelW, panelH, 6);
