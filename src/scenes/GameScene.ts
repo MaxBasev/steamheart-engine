@@ -140,11 +140,19 @@ export class GameScene extends Phaser.Scene {
     // Keep music playing across level restarts — don't restart if already running
     if (this.sound.get('music-bg')) return;
 
-    this.sound.play('music-bg', {
-      loop:   true,
-      volume: 0.5,
-      mute:   this.soundMuted,
+    // Already cached from a previous lazy load — just play
+    if (this.cache.audio.exists('music-bg')) {
+      this.sound.play('music-bg', { loop: true, volume: 0.5, mute: this.soundMuted });
+      return;
+    }
+
+    // Lazy-load: start downloading in the background, play when ready
+    this.load.audio('music-bg', 'assets/audio/Pressure_and_Pinions.mp3');
+    this.load.once('complete', () => {
+      if (this.sound.get('music-bg')) return; // guard for quick restarts
+      this.sound.play('music-bg', { loop: true, volume: 0.5, mute: this.soundMuted });
     });
+    this.load.start();
   }
 
   // ── Background ────────────────────────────────────────────────────────────

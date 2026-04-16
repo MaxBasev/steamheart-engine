@@ -37,7 +37,7 @@ export class PreloadScene extends Phaser.Scene {
       this.load.image(`target-anim-${i}`, `assets/floor/output/output-${pad}.png`);
     }
 
-    this.load.audio('music-bg', 'assets/audio/Pressure_and_Pinions.mp3');
+    // Music is loaded lazily in GameScene to keep the preload bar fast
   }
 
   create(): void {
