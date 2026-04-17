@@ -209,25 +209,27 @@ export class Grid {
     const dDeg = GEAR_DEG_PER_SEC * this.gearSpeedMult * (delta / 1000);
 
     for (const [key, img] of this.sprites) {
-      // Keys: "col,row" for gears; "e:col,row,N" for axle end gears
-      let col: number, row: number, isEndGear: boolean;
+      // Key formats:
+      //   "col,row"       → main gear cell
+      //   "e:col,row,N"   → axle end gear (N = 0 or 1)
+      //   "h:col,row"     → corner hub gear
+      let col: number, row: number, neededType: string;
       if (key.startsWith('e:')) {
         const inner = key.slice(2).split(',');
-        col = parseInt(inner[0], 10);
-        row = parseInt(inner[1], 10);
-        isEndGear = true;
+        col = parseInt(inner[0], 10); row = parseInt(inner[1], 10);
+        neededType = 'axle';
+      } else if (key.startsWith('h:')) {
+        const inner = key.slice(2).split(',');
+        col = parseInt(inner[0], 10); row = parseInt(inner[1], 10);
+        neededType = 'corner';
       } else {
         const parts = key.split(',').map(Number);
-        col = parts[0];
-        row = parts[1];
-        isEndGear = false;
+        col = parts[0]; row = parts[1];
+        neededType = 'gear';
       }
 
       const cell = this.cells[row]?.[col];
-      const shouldAnim = isEndGear
-        ? cell?.part?.type === 'axle'
-        : cell?.part?.type === 'gear';
-      if (!shouldAnim) continue;
+      if (cell?.part?.type !== neededType) continue;
 
       // Checkerboard: even sum → clockwise, odd sum → counter-clockwise
       const dir   = (col + row) % 2 === 0 ? 1 : -1;
@@ -367,34 +369,70 @@ export class Grid {
           });
         }
 
-        // Corner gear — always programmatic L-shape.
-        // A bevel gear does not spin in the 2D plane, so no sprite/animation.
-        // The L-shape directly communicates which two sides are connected.
+        // Corner gear — corner.png static (angle shows orientation) + small
+        // animated hub gear on top.  Falls back to programmatic L-shape if the
+        // 'corner' texture isn't loaded yet.
         // rotation: 0=right+down  1=down+left  2=left+up  3=up+right
         if (cell.part?.type === 'corner') {
-          const rot    = cell.part.rotation;
-          const thick  = 10;
-          const half   = cellSize / 2;
-          const margin = CELL_PAD + 4;
-          const arm    = half - margin;
-          g.fillStyle(0x9a4808, 1);
-          // Horizontal arm toward the connected horizontal side
-          if (rot === 0 || rot === 3) {
-            g.fillRect(cx,         cy - thick / 2, arm, thick);   // right
+          if (this.scene.textures.exists('corner')) {
+            // ── Base sprite (static, no spin) ──────────────────────────────
+            const cKey = `${col},${row}`;
+            needed.add(cKey);
+            let cImg = this.sprites.get(cKey);
+            if (!cImg) {
+              cImg = this.scene.add.image(cx, cy, 'corner');
+              this.sprites.set(cKey, cImg);
+            }
+            const diameter = cellSize * GEAR_SIZE_MEDIUM;
+            const texMax   = Math.max(cImg.width || diameter, cImg.height || diameter);
+            cImg.setScale(diameter / texMax);
+            cImg.setPosition(cx, cy);
+            cImg.setDepth(2);
+            // Rotate sprite to match orientation (visual hint of which side is active)
+            cImg.setAngle(cell.part.rotation * 90);
+
+            // ── Hub gear (animated, on top) ─────────────────────────────────
+            const hubSpec = GEAR_SPECS[(col * 7 + row * 13) % GEAR_SPECS.length];
+            if (this.scene.textures.exists(hubSpec.textureKey)) {
+              const hKey = `h:${col},${row}`;
+              needed.add(hKey);
+              let hImg = this.sprites.get(hKey);
+              if (!hImg) {
+                hImg = this.scene.add.image(cx, cy, hubSpec.textureKey);
+                this.sprites.set(hKey, hImg);
+                this.gearAngles.set(hKey,
+                  (col + row) % 2 === 0 ? 0 : 180 / hubSpec.toothCount);
+              }
+              const hubSize = cellSize * 0.52;
+              const hubMax  = Math.max(hImg.width || hubSize, hImg.height || hubSize);
+              hImg.setScale(hubSize / hubMax);
+              hImg.setPosition(cx, cy);
+              hImg.setDepth(3);
+              hImg.setAngle(this.gearAngles.get(hKey) ?? 0);
+            }
           } else {
-            g.fillRect(x + margin, cy - thick / 2, arm, thick);   // left
+            // Programmatic fallback (L-shape arms)
+            const rot    = cell.part.rotation;
+            const thick  = 10;
+            const half   = cellSize / 2;
+            const margin = CELL_PAD + 4;
+            const arm    = half - margin;
+            g.fillStyle(0x9a4808, 1);
+            if (rot === 0 || rot === 3) {
+              g.fillRect(cx,         cy - thick / 2, arm, thick);
+            } else {
+              g.fillRect(x + margin, cy - thick / 2, arm, thick);
+            }
+            if (rot === 0 || rot === 1) {
+              g.fillRect(cx - thick / 2, cy,         thick, arm);
+            } else {
+              g.fillRect(cx - thick / 2, y + margin, thick, arm);
+            }
+            g.fillStyle(0x6a3005, 1);
+            g.fillCircle(cx, cy, thick * 0.7);
+            g.fillStyle(0xc86010, 1);
+            g.fillCircle(cx, cy, thick * 0.3);
           }
-          // Vertical arm toward the connected vertical side
-          if (rot === 0 || rot === 1) {
-            g.fillRect(cx - thick / 2, cy,         thick, arm);   // down
-          } else {
-            g.fillRect(cx - thick / 2, y + margin, thick, arm);   // up
-          }
-          // Hub at the elbow
-          g.fillStyle(0x6a3005, 1);
-          g.fillCircle(cx, cy, thick * 0.7);
-          g.fillStyle(0xc86010, 1);
-          g.fillCircle(cx, cy, thick * 0.3);
         }
 
         // Source and target both have dedicated sprites — no overlay needed
