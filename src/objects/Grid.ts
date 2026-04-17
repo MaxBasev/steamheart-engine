@@ -12,8 +12,9 @@ const STATE_COLORS: Record<CellState, number> = {
 
 // Per-part-type fill color (used when no sprite is available)
 const PART_COLORS: Record<string, number> = {
-  gear: 0xb87820,  // brass
-  axle: 0x7a5a20,  // darker brass
+  gear:   0xb87820,  // brass
+  axle:   0x7a5a20,  // darker brass
+  corner: 0xc86010,  // copper-orange
 };
 
 // ── Gear specs ────────────────────────────────────────────────────────────────
@@ -208,9 +209,25 @@ export class Grid {
     const dDeg = GEAR_DEG_PER_SEC * this.gearSpeedMult * (delta / 1000);
 
     for (const [key, img] of this.sprites) {
-      const [col, row] = key.split(',').map(Number);
+      // Keys: "col,row" for gears; "e:col,row,N" for axle end gears
+      let col: number, row: number, isEndGear: boolean;
+      if (key.startsWith('e:')) {
+        const inner = key.slice(2).split(',');
+        col = parseInt(inner[0], 10);
+        row = parseInt(inner[1], 10);
+        isEndGear = true;
+      } else {
+        const parts = key.split(',').map(Number);
+        col = parts[0];
+        row = parts[1];
+        isEndGear = false;
+      }
+
       const cell = this.cells[row]?.[col];
-      if (cell?.part?.type !== 'gear') continue;
+      const shouldAnim = isEndGear
+        ? cell?.part?.type === 'axle'
+        : cell?.part?.type === 'gear';
+      if (!shouldAnim) continue;
 
       // Checkerboard: even sum → clockwise, odd sum → counter-clockwise
       const dir   = (col + row) % 2 === 0 ? 1 : -1;
@@ -289,19 +306,95 @@ export class Grid {
           img.setAngle(this.gearAngles.get(key) ?? 0);
         }
 
-        // Programmatic axle (no sprite yet)
+        // Axle — sprite if loaded, otherwise programmatic.
+        // Small animated gears are placed at both tips to show where the axle
+        // connects to neighbouring cells.
         if (cell.part?.type === 'axle') {
-          const horiz  = cell.part.rotation % 2 === 0;
-          const thick  = 10;
-          const margin = CELL_PAD + 4;
-          g.fillStyle(0x5a4010, 1);
-          if (horiz) {
-            g.fillRect(x + margin, cy - thick / 2, cellSize - margin * 2, thick);
+          const isHoriz = cell.part.rotation % 2 === 0;
+
+          if (this.scene.textures.exists('axle')) {
+            const key = `${col},${row}`;
+            needed.add(key);
+            let img = this.sprites.get(key);
+            if (!img) {
+              img = this.scene.add.image(cx, cy, 'axle');
+              this.sprites.set(key, img);
+            }
+            const scale = (cellSize * 0.92) / img.width;
+            img.setScale(scale);
+            img.setPosition(cx, cy);
+            img.setDepth(2);
+            img.setAngle(isHoriz ? 0 : 90);
           } else {
-            g.fillRect(cx - thick / 2, y + margin, thick, cellSize - margin * 2);
+            // Programmatic fallback
+            const thick  = 10;
+            const margin = CELL_PAD + 4;
+            g.fillStyle(0x5a4010, 1);
+            if (isHoriz) {
+              g.fillRect(x + margin, cy - thick / 2, cellSize - margin * 2, thick);
+            } else {
+              g.fillRect(cx - thick / 2, y + margin, thick, cellSize - margin * 2);
+            }
+            g.fillStyle(0x3a2808, 1);
+            g.fillCircle(cx, cy, thick * 0.45);
           }
-          g.fillStyle(0x3a2808, 1);
-          g.fillCircle(cx, cy, thick * 0.45);
+
+          // End gears at both tips — always rendered (regardless of axle sprite)
+          // Keyed as "e:col,row,0" and "e:col,row,1" so the animation loop
+          // can distinguish them from main cell sprites.
+          const endSpec  = GEAR_SPECS[(col * 7 + row * 13) % GEAR_SPECS.length];
+          const endSize  = cellSize * 0.62;   // smaller than a full cell gear
+          const endTips  = isHoriz
+            ? [{ ex: x,            ey: cy }, { ex: x + cellSize, ey: cy }]
+            : [{ ex: cx,           ey: y  }, { ex: cx, ey: y + cellSize }];
+
+          endTips.forEach(({ ex, ey }, i) => {
+            if (!this.scene.textures.exists(endSpec.textureKey)) return;
+
+            const eKey = `e:${col},${row},${i}`;
+            needed.add(eKey);
+            let eImg = this.sprites.get(eKey);
+            if (!eImg) {
+              eImg = this.scene.add.image(ex, ey, endSpec.textureKey);
+              this.sprites.set(eKey, eImg);
+              this.gearAngles.set(eKey, (col + row) % 2 === 0 ? 0 : 180 / endSpec.toothCount);
+            }
+            const texMax = Math.max(eImg.width || endSize, eImg.height || endSize);
+            eImg.setScale(endSize / texMax);
+            eImg.setPosition(ex, ey);
+            eImg.setDepth(3);   // on top of axle shaft
+            eImg.setAngle(this.gearAngles.get(eKey) ?? 0);
+          });
+        }
+
+        // Corner gear — always programmatic L-shape.
+        // A bevel gear does not spin in the 2D plane, so no sprite/animation.
+        // The L-shape directly communicates which two sides are connected.
+        // rotation: 0=right+down  1=down+left  2=left+up  3=up+right
+        if (cell.part?.type === 'corner') {
+          const rot    = cell.part.rotation;
+          const thick  = 10;
+          const half   = cellSize / 2;
+          const margin = CELL_PAD + 4;
+          const arm    = half - margin;
+          g.fillStyle(0x9a4808, 1);
+          // Horizontal arm toward the connected horizontal side
+          if (rot === 0 || rot === 3) {
+            g.fillRect(cx,         cy - thick / 2, arm, thick);   // right
+          } else {
+            g.fillRect(x + margin, cy - thick / 2, arm, thick);   // left
+          }
+          // Vertical arm toward the connected vertical side
+          if (rot === 0 || rot === 1) {
+            g.fillRect(cx - thick / 2, cy,         thick, arm);   // down
+          } else {
+            g.fillRect(cx - thick / 2, y + margin, thick, arm);   // up
+          }
+          // Hub at the elbow
+          g.fillStyle(0x6a3005, 1);
+          g.fillCircle(cx, cy, thick * 0.7);
+          g.fillStyle(0xc86010, 1);
+          g.fillCircle(cx, cy, thick * 0.3);
         }
 
         // Source and target both have dedicated sprites — no overlay needed

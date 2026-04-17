@@ -19,6 +19,11 @@ export class PreloadScene extends Phaser.Scene {
       this.load.image(`gear-${i}`, `assets/parts/gear-${pad}.png`);
     }
 
+    this.load.image('axle',             'assets/parts/axle.png');
+    this.load.image('corner',           'assets/parts/corner.png');
+    this.load.image('pressure-bar-bg',  'assets/parts/pressure-bar-bg.png');
+    this.load.image('pressure-bar-fill','assets/parts/pressure-bar-fill.png');
+
     for (let i = 1; i <= 5; i++) {
       this.load.image(`floor-${i}`, `assets/floor/floor-00${i}.png`);
     }

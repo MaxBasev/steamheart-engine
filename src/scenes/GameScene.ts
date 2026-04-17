@@ -66,6 +66,12 @@ export class GameScene extends Phaser.Scene {
   private resultHeadline!: Phaser.GameObjects.Text;
   private resultSubtext!:  Phaser.GameObjects.Text;
 
+  // Graphical pressure bar — only created when the level has pressure enabled
+  private pressureBarBg?:       Phaser.GameObjects.Image;
+  private pressureBarFill?:     Phaser.GameObjects.Image;
+  private pressureBarFillOrigW  = 0;
+  private pressureBarFillOrigH  = 0;
+
   // Persists across scene.restart() because restart reuses the same instance.
   // Must be reset explicitly in create().
   private currentLevelIndex = 0;
@@ -95,11 +101,14 @@ export class GameScene extends Phaser.Scene {
 
     this.grid = new Grid(this, config);
 
-    // Apply level cells: source, target, then locked cells
+    // Apply level cells: source, target, locked, then pre-placed parts
     this.grid.setCell(level.sourceCol, level.sourceRow, 'source');
     this.grid.setCell(level.targetCol, level.targetRow, 'target');
     for (const lc of level.lockedCells) {
       this.grid.setCell(lc.col, lc.row, 'locked');
+    }
+    for (const pp of level.prePlacedParts ?? []) {
+      this.grid.setCell(pp.col, pp.row, 'occupied', pp.part);
     }
 
     // Floor tiles read final cell states — must come after all setCell() calls
@@ -236,17 +245,28 @@ export class GameScene extends Phaser.Scene {
     this.hoverGraphics.lineStyle(2, color, HOVER_ALPHA);
     this.hoverGraphics.strokeRect(x + 2, y + 2, s - 4, s - 4);
 
-    // For axle: show orientation preview so the player can see which way it faces
+    // For axle / corner: show orientation preview
+    const cx = x + s / 2;
+    const cy = y + s / 2;
     if (canPlace && this.state.queue[0] === 'axle') {
       const horiz = this.state.rotation % 2 === 0;
-      const cx = x + s / 2;
-      const cy = y + s / 2;
       this.hoverGraphics.fillStyle(color, 0.28);
       if (horiz) {
         this.hoverGraphics.fillRect(x + 8, cy - 4, s - 16, 8);
       } else {
         this.hoverGraphics.fillRect(cx - 4, y + 8, 8, s - 16);
       }
+    }
+    if (canPlace && this.state.queue[0] === 'corner') {
+      const rot  = this.state.rotation;
+      const arm  = s / 2 - 8;
+      this.hoverGraphics.fillStyle(color, 0.28);
+      // Horizontal arm
+      if (rot === 0 || rot === 3) this.hoverGraphics.fillRect(cx,     cy - 4, arm, 8);
+      else                         this.hoverGraphics.fillRect(x + 8,  cy - 4, arm, 8);
+      // Vertical arm
+      if (rot === 0 || rot === 1) this.hoverGraphics.fillRect(cx - 4, cy,     8, arm);
+      else                         this.hoverGraphics.fillRect(cx - 4, y + 8,  8, arm);
     }
   }
 
@@ -383,10 +403,36 @@ export class GameScene extends Phaser.Scene {
       ...dimmer, color: '#555555',
     });
 
-    // Pressure gauge — only visible for levels that have pressure enabled
-    this.pressureText = this.add.text(12, 88, '', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#888888',
-    }).setVisible(!!level.pressure?.enabled);
+    // Pressure gauge — graphical bar for levels that have pressure
+    if (level.pressure?.enabled) {
+      const barX  = 12;
+      const barCY = 94;
+      const barW  = 280;
+
+      this.add.text(barX, barCY - 13, 'STEAM PRESSURE', {
+        fontSize: '9px', fontFamily: 'monospace', color: '#555555',
+      });
+
+      const bg = this.add.image(barX, barCY, 'pressure-bar-bg').setOrigin(0, 0.5);
+      bg.setScale(barW / bg.width).setDepth(5);
+      this.pressureBarBg = bg;
+
+      const fill = this.add.image(barX + 5, barCY, 'pressure-bar-fill').setOrigin(0, 0.5);
+      fill.setScale(barW / bg.width).setDepth(6);
+      this.pressureBarFillOrigW = fill.width;
+      this.pressureBarFillOrigH = fill.height;
+      fill.setCrop(0, 0, 0, this.pressureBarFillOrigH);
+      this.pressureBarFill = fill;
+
+      this.pressureText = this.add.text(barX + barW + 8, barCY, '', {
+        fontSize: '11px', fontFamily: 'monospace', color: '#888888',
+      }).setOrigin(0, 0.5).setDepth(6);
+    } else {
+      // Invisible placeholder so updatePressureHUD() can always reference the field
+      this.pressureText = this.add.text(0, 0, '').setVisible(false);
+      this.pressureBarBg   = undefined;
+      this.pressureBarFill = undefined;
+    }
 
     // Sound toggle button
     this.addSoundToggle();
@@ -424,10 +470,13 @@ export class GameScene extends Phaser.Scene {
     const preview    = queue.slice(1, 4).map(p => p[0].toUpperCase()).join(' ');
     const previewStr = preview.length > 0 ? `   next: ${preview}` : '';
 
-    // Show orientation indicator only for axle — gear rotation has no gameplay effect
+    // Show orientation indicator for axle and corner — gear rotation has no gameplay effect
+    const CORNER_SYMBOLS = ['↘', '↙', '↖', '↗'];
     const rotLabel = current === 'axle'
       ? ` [${rotation % 2 === 0 ? '↔' : '↕'}]`
-      : '';
+      : current === 'corner'
+        ? ` [${CORNER_SYMBOLS[rotation]}]`
+        : '';
 
     this.queueText.setText(
       `In hand: ${current.toUpperCase()}${rotLabel}  (${remaining} left)${previewStr}`
@@ -439,22 +488,32 @@ export class GameScene extends Phaser.Scene {
     const cfg = this.currentLevel.pressure;
     if (!cfg?.enabled) return;
 
-    const pct = this.state.pressure / cfg.failAt;
-    const bar = Math.round(pct * 20);
-    const filled   = '█'.repeat(bar);
-    const unfilled = '░'.repeat(20 - bar);
-    const label    = `Pressure: [${filled}${unfilled}] ${Math.floor(this.state.pressure)}/${cfg.failAt}`;
+    const pct = Math.min(this.state.pressure / cfg.failAt, 1);
 
-    let color: string;
-    if (pct >= PRESSURE_CRITICAL_PCT) {
-      color = '#ff4422';
-    } else if (pct >= PRESSURE_WARN_PCT) {
-      color = '#cc9922';
-    } else {
-      color = '#888888';
+    // Update graphical bar fill
+    if (this.pressureBarFill) {
+      this.pressureBarFill.setCrop(
+        0, 0,
+        this.pressureBarFillOrigW * pct,
+        this.pressureBarFillOrigH,
+      );
+      // Red tint at critical level to accentuate danger
+      if (pct >= PRESSURE_CRITICAL_PCT) {
+        this.pressureBarFill.setTint(0xff2200);
+      } else {
+        this.pressureBarFill.clearTint();
+      }
     }
 
-    this.pressureText.setText(label).setColor(color);
+    // Numeric label
+    let color: string;
+    if (pct >= PRESSURE_CRITICAL_PCT)  color = '#ff4422';
+    else if (pct >= PRESSURE_WARN_PCT) color = '#cc9922';
+    else                               color = '#888888';
+
+    this.pressureText
+      .setText(`${Math.floor(this.state.pressure)}/${cfg.failAt}`)
+      .setColor(color);
   }
 
   // ── Result overlay ─────────────────────────────────────────────────────────

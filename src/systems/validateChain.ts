@@ -81,10 +81,27 @@ function canConnect(cell: Cell, dir: Direction): boolean {
   if (cell.part.type === 'gear') return true;
 
   // Axle: even rotation = horizontal (left/right), odd = vertical (up/down)
-  const horizontal = cell.part.rotation % 2 === 0;
-  return horizontal
-    ? dir === 'left' || dir === 'right'
-    : dir === 'up'   || dir === 'down';
+  if (cell.part.type === 'axle') {
+    const horizontal = cell.part.rotation % 2 === 0;
+    return horizontal
+      ? dir === 'left' || dir === 'right'
+      : dir === 'up'   || dir === 'down';
+  }
+
+  // Corner gear: connects exactly 2 sides in an L-shape
+  // 0=right+down  1=down+left  2=left+up  3=up+right
+  if (cell.part.type === 'corner') {
+    const CORNER_DIRS: Record<number, [Direction, Direction]> = {
+      0: ['right', 'down'],
+      1: ['down',  'left'],
+      2: ['left',  'up'],
+      3: ['up',    'right'],
+    };
+    const [a, b] = CORNER_DIRS[cell.part.rotation];
+    return dir === a || dir === b;
+  }
+
+  return false;
 }
 
 function neighborsWithDir(grid: Grid, cell: Cell): Array<[Cell, Direction]> {
