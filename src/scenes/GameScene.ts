@@ -78,8 +78,10 @@ export class GameScene extends Phaser.Scene {
   private currentLevelIndex = 0;
   private currentLevel!:    LevelData;
   private state: GameState  = freshState(LEVELS[0]);
-  private soundMuted        = false;
-  private isTouchDevice     = false;
+  private soundMuted           = false;
+  private isTouchDevice        = false;
+  private mobileBtnRotate?:    Phaser.GameObjects.Text;
+  private mobileBtnAction?:    Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -471,29 +473,39 @@ export class GameScene extends Phaser.Scene {
     if (!this.isTouchDevice) return;
 
     const { width, height } = this.scale;
-    const BW = 150, BH = 60, DEPTH = 15;
-    const by = height - 38;
+    const BW = 150, BH = 54, DEPTH = 15;
+    const by = height - 72;  // raised so browser chrome doesn't clip them
 
-    const makeBtn = (bx: number, label: string, cb: () => void): void => {
-      // Tap-target rectangle (interactive)
-      this.add.rectangle(bx, by, BW, BH, 0x1a1410, 0.88)
-        .setDepth(DEPTH)
-        .setInteractive()
+    const makeBtn = (bx: number, label: string, cb: () => void): Phaser.GameObjects.Text => {
+      this.add.rectangle(bx, by, BW, BH, 0x1a1410, 0.90)
+        .setDepth(DEPTH).setInteractive()
         .on('pointerdown', cb);
-      // Border
       const g = this.add.graphics().setDepth(DEPTH + 1);
       g.lineStyle(1, 0x8a6010, 0.8);
       g.strokeRoundedRect(bx - BW / 2, by - BH / 2, BW, BH, 8);
-      // Label
-      this.add.text(bx, by, label, {
-        fontSize: '19px', fontFamily: 'monospace', color: '#b87820',
+      return this.add.text(bx, by, label, {
+        fontSize: '18px', fontFamily: 'monospace', color: '#b87820',
       }).setOrigin(0.5).setDepth(DEPTH + 2);
     };
 
-    // Left: rotate (before activation) / retry (after)  → same key handler
-    makeBtn(BW / 2 + 12, '⟳  ROTATE', () => this.onRKey());
-    // Right: activate (before win) / next level (after win) → same key handler
-    makeBtn(width - BW / 2 - 12, '▶  GO', () => this.onSpaceKey());
+    this.mobileBtnRotate = makeBtn(BW / 2 + 12,         '⟳  ROTATE', () => this.onRKey());
+    this.mobileBtnAction = makeBtn(width - BW / 2 - 12, '▶  GO',     () => this.onSpaceKey());
+  }
+
+  private updateMobileButtons(): void {
+    if (!this.mobileBtnRotate || !this.mobileBtnAction) return;
+
+    if (!this.state.isActivated) {
+      this.mobileBtnRotate.setText('⟳  ROTATE');
+      this.mobileBtnAction.setText('▶  GO');
+    } else if (this.state.isWon) {
+      this.mobileBtnRotate.setText('↺  RETRY');
+      this.mobileBtnAction.setText(this.isFinalLevel() ? '↺  AGAIN' : '→  NEXT');
+    } else {
+      // failed
+      this.mobileBtnRotate.setText('↺  RETRY');
+      this.mobileBtnAction.setText('—');
+    }
   }
 
   private updateQueueHUD(): void {
@@ -692,6 +704,7 @@ export class GameScene extends Phaser.Scene {
     this.resultSubtext.setText(subline).setVisible(true);
     this.statusText.setText(statusLine);
     this.queueGraphics.clear();
+    this.updateMobileButtons();
   }
 
   // ── Chain debug overlay ────────────────────────────────────────────────────
