@@ -40,6 +40,9 @@ export class PreloadScene extends Phaser.Scene {
       this.load.image(`target-anim-${i}`, `assets/floor/output/output-${pad}.png`);
     }
 
+    this.load.audio('sfx-place', 'assets/audio/Gear-Installed.mp3');
+    this.load.audio('sfx-gears', 'assets/audio/Rotating-Gears.mp3');
+
     // Music is loaded lazily in GameScene to keep the preload bar fast
   }
 

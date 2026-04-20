@@ -60,7 +60,8 @@ export class GameScene extends Phaser.Scene {
   private debugGraphics!: Phaser.GameObjects.Graphics;
   private resultGraphics!: Phaser.GameObjects.Graphics;
 
-  private queueText!:      Phaser.GameObjects.Text;
+  private queueText!:      Phaser.GameObjects.Text;  // invisible placeholder (used by showResult)
+  private queueGraphics!:  Phaser.GameObjects.Graphics;
   private statusText!:     Phaser.GameObjects.Text;
   private pressureText!:   Phaser.GameObjects.Text;
   private resultHeadline!: Phaser.GameObjects.Text;
@@ -114,9 +115,10 @@ export class GameScene extends Phaser.Scene {
     // Floor tiles read final cell states — must come after all setCell() calls
     this.grid.buildFloorTiles();
 
-    // Z-order: grid → debug → hover → result overlay (last = on top)
+    // Z-order: grid → debug → hover → queueIcons → result overlay (last = on top)
     this.debugGraphics = this.add.graphics();
     this.hoverGraphics = this.add.graphics();
+    this.queueGraphics = this.add.graphics().setDepth(9);
     this.resultGraphics = this.add.graphics().setDepth(10);
 
     this.resultHeadline = this.add
@@ -281,6 +283,7 @@ export class GameScene extends Phaser.Scene {
 
     const placed = this.grid.placeAt(coord.col, coord.row, { type: currentPart, rotation: this.state.rotation });
     if (placed) {
+      this.sound.play('sfx-place', { volume: 0.6, mute: this.soundMuted });
       this.state.queue.shift();
       this.debugGraphics.clear();
       this.updateQueueHUD();
@@ -312,10 +315,12 @@ export class GameScene extends Phaser.Scene {
     this.grid.animateGearSpeed(result.valid);
 
     if (result.valid) {
-      // Turn target green first, then show the overlay after a short pause
+      this.cameras.main.flash(350, 160, 255, 160);
+      this.sound.play('sfx-gears', { volume: 0.55, loop: false, mute: this.soundMuted });
       this.grid.setTargetActivated();
       this.time.delayedCall(600, () => this.showResult(true));
     } else {
+      this.cameras.main.shake(380, 0.013);
       this.showResult(false);
     }
 
@@ -372,6 +377,7 @@ export class GameScene extends Phaser.Scene {
     this.state.isActivated = true;
     this.state.isFailed    = true;
     this.hoverGraphics.clear();
+    this.cameras.main.shake(500, 0.018);
     this.showResult(false, true);
   }
 
@@ -395,18 +401,18 @@ export class GameScene extends Phaser.Scene {
       this.add.text(12, 30, level.instruction, dimmer);
     }
 
-    // Dynamic queue status
-    this.queueText = this.add.text(12, 52, '', dim);
+    // Invisible placeholder — only used by showResult() to clear queue display
+    this.queueText = this.add.text(0, 0, '').setVisible(false);
 
-    // Dynamic action hint
-    this.statusText = this.add.text(12, 68, '', {
+    // Dynamic action hint — sits below the queue icon strip (icons end ~y=78)
+    this.statusText = this.add.text(12, 82, '', {
       ...dimmer, color: '#555555',
     });
 
     // Pressure gauge — graphical bar for levels that have pressure
     if (level.pressure?.enabled) {
       const barX  = 12;
-      const barCY = 94;
+      const barCY = 108;
       const barW  = 280;
 
       this.add.text(barX, barCY - 13, 'STEAM PRESSURE', {
@@ -440,10 +446,11 @@ export class GameScene extends Phaser.Scene {
 
   private addSoundToggle(): void {
     const label = () => this.soundMuted ? '♪  OFF' : '♪  ON';
+    const { width } = this.scale;
 
-    const btn = this.add.text(12, 112, label(), {
+    const btn = this.add.text(width - 12, 12, label(), {
       fontSize: '12px', fontFamily: 'monospace', color: '#444444',
-    });
+    }).setOrigin(1, 0);
 
     btn.setInteractive({ useHandCursor: true })
       .on('pointerover',  () => btn.setColor('#888888'))
@@ -458,30 +465,120 @@ export class GameScene extends Phaser.Scene {
 
   private updateQueueHUD(): void {
     const { queue, rotation } = this.state;
+    this.queueGraphics.clear();
 
     if (queue.length === 0) {
-      this.queueText.setText('Queue: empty');
-      this.statusText.setText('[SPACE] activate — no parts remaining');
+      this.statusText.setText('[SPACE] activate');
       return;
     }
 
-    const current    = queue[0];
-    const remaining  = queue.length;
-    const preview    = queue.slice(1, 4).map(p => p[0].toUpperCase()).join(' ');
-    const previewStr = preview.length > 0 ? `   next: ${preview}` : '';
+    const BIG  = 42;   // current-part slot size
+    const SM   = 28;   // next-part slot size
+    const GAP  = 6;
+    const originX = 12;
+    const originY = 44;
 
-    // Show orientation indicator for axle and corner — gear rotation has no gameplay effect
+    // Current part — big highlighted slot
+    this.drawPartIcon(originX, originY, BIG, queue[0], rotation, true);
+
+    // Next 3 parts — smaller dimmed slots
+    for (let i = 1; i <= 3; i++) {
+      if (!queue[i]) break;
+      const sx = originX + BIG + GAP + (i - 1) * (SM + GAP);
+      const sy = originY + Math.floor((BIG - SM) / 2);
+      this.drawPartIcon(sx, sy, SM, queue[i], 0, false);
+    }
+
+    // Remaining count
+    this.queueGraphics.fillStyle(0x444444, 1);
+    // (no text in graphics — statusText handles hints below)
+
     const CORNER_SYMBOLS = ['↘', '↙', '↖', '↗'];
-    const rotLabel = current === 'axle'
-      ? ` [${rotation % 2 === 0 ? '↔' : '↕'}]`
-      : current === 'corner'
-        ? ` [${CORNER_SYMBOLS[rotation]}]`
+    const rotHint = queue[0] === 'axle'
+      ? `  ${rotation % 2 === 0 ? '↔' : '↕'}`
+      : queue[0] === 'corner'
+        ? `  ${CORNER_SYMBOLS[rotation]}`
         : '';
+    this.statusText.setText(`[SPACE] activate   [R] rotate${rotHint}   (${queue.length} left)`);
+  }
 
-    this.queueText.setText(
-      `In hand: ${current.toUpperCase()}${rotLabel}  (${remaining} left)${previewStr}`
-    );
-    this.statusText.setText('[SPACE] activate   [R] rotate');
+  private drawPartIcon(x: number, y: number, size: number, part: PartType, rotation: number, active: boolean): void {
+    const g  = this.queueGraphics;
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+
+    // Slot background
+    g.fillStyle(0x161616, 1);
+    g.fillRoundedRect(x, y, size, size, 4);
+    // Border
+    g.lineStyle(active ? 2 : 1, active ? 0xb87820 : 0x2e2e2e, 1);
+    g.strokeRoundedRect(x, y, size, size, 4);
+
+    const r = size * 0.30;
+
+    if (part === 'gear') {
+      // Teeth — small squares around perimeter
+      const teeth = 8;
+      g.fillStyle(active ? 0xb87820 : 0x6a4810, 1);
+      for (let i = 0; i < teeth; i++) {
+        const a  = (i / teeth) * Math.PI * 2 - Math.PI / 8;
+        const tx = cx + Math.cos(a) * (r + 2);
+        const ty = cy + Math.sin(a) * (r + 2);
+        g.fillRect(tx - 1.5, ty - 1.5, 3, 3);
+      }
+      // Outer circle
+      g.fillStyle(active ? 0xb87820 : 0x6a4810, 1);
+      g.fillCircle(cx, cy, r);
+      // Inner hole
+      g.fillStyle(0x161616, 1);
+      g.fillCircle(cx, cy, r * 0.44);
+      // Hub
+      g.fillStyle(active ? 0xd8a840 : 0x8a6820, 1);
+      g.fillCircle(cx, cy, r * 0.18);
+
+    } else if (part === 'axle') {
+      const horiz  = rotation % 2 === 0;
+      const barLen = size * 0.74;
+      const barThk = size * 0.17;
+      g.fillStyle(active ? 0x7a5a20 : 0x4a3a10, 1);
+      if (horiz) {
+        g.fillRoundedRect(cx - barLen / 2, cy - barThk / 2, barLen, barThk, 2);
+        // End gears
+        g.fillStyle(active ? 0xa07830 : 0x6a5020, 1);
+        g.fillCircle(cx - barLen / 2, cy, barThk * 0.75);
+        g.fillCircle(cx + barLen / 2, cy, barThk * 0.75);
+      } else {
+        g.fillRoundedRect(cx - barThk / 2, cy - barLen / 2, barThk, barLen, 2);
+        g.fillStyle(active ? 0xa07830 : 0x6a5020, 1);
+        g.fillCircle(cx, cy - barLen / 2, barThk * 0.75);
+        g.fillCircle(cx, cy + barLen / 2, barThk * 0.75);
+      }
+      // Center bolt
+      g.fillStyle(active ? 0xc89a40 : 0x8a6820, 1);
+      g.fillCircle(cx, cy, barThk * 0.55);
+
+    } else if (part === 'corner') {
+      const thick = size * 0.17;
+      const arm   = size * 0.33;
+      g.fillStyle(active ? 0xc86010 : 0x7a3808, 1);
+      // 0=right+down  1=down+left  2=left+up  3=up+right
+      if (rotation === 0) {
+        g.fillRect(cx - thick / 2, cy - thick / 2, arm + thick / 2, thick);
+        g.fillRect(cx - thick / 2, cy - thick / 2, thick, arm + thick / 2);
+      } else if (rotation === 1) {
+        g.fillRect(cx - arm, cy - thick / 2, arm + thick / 2, thick);
+        g.fillRect(cx - thick / 2, cy - thick / 2, thick, arm + thick / 2);
+      } else if (rotation === 2) {
+        g.fillRect(cx - arm, cy - thick / 2, arm + thick / 2, thick);
+        g.fillRect(cx - thick / 2, cy - arm, thick, arm + thick / 2);
+      } else {
+        g.fillRect(cx - thick / 2, cy - thick / 2, arm + thick / 2, thick);
+        g.fillRect(cx - thick / 2, cy - arm, thick, arm + thick / 2);
+      }
+      // Hub
+      g.fillStyle(active ? 0xe07828 : 0x9a5010, 1);
+      g.fillCircle(cx, cy, thick * 0.65);
+    }
   }
 
   private updatePressureHUD(): void {
@@ -561,7 +658,7 @@ export class GameScene extends Phaser.Scene {
     this.resultHeadline.setText(headline).setColor(headColor).setVisible(true);
     this.resultSubtext.setText(subline).setVisible(true);
     this.statusText.setText(statusLine);
-    this.queueText.setText('');
+    this.queueGraphics.clear();
   }
 
   // ── Chain debug overlay ────────────────────────────────────────────────────
