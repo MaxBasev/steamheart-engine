@@ -105,9 +105,12 @@ export class GameScene extends Phaser.Scene {
 
     this.grid = new Grid(this, config);
 
-    // Apply level cells: source, target, locked, then pre-placed parts
+    // Apply level cells: source, target(s), locked, then pre-placed parts
     this.grid.setCell(level.sourceCol, level.sourceRow, 'source');
     this.grid.setCell(level.targetCol, level.targetRow, 'target');
+    for (const t of level.extraTargets ?? []) {
+      this.grid.setCell(t.col, t.row, 'target');
+    }
     for (const lc of level.lockedCells) {
       this.grid.setCell(lc.col, lc.row, 'locked');
     }
@@ -720,11 +723,13 @@ export class GameScene extends Phaser.Scene {
       this.debugGraphics.fillRect(x + inset, y + inset, s - inset * 2, s - inset * 2);
     }
 
-    const target = this.grid.getTargetCell();
-    if (target) {
+    // Per-target colour: reached = green, not reached = red
+    const reachedKeys = new Set(result.reachedTargets.map(c => `${c.col},${c.row}`));
+    for (const target of this.grid.getTargetCells()) {
       const { x, y } = this.grid.cellToWorld(target.col, target.row);
-      const color = result.valid ? DBG_VALID_COLOR  : DBG_INVALID_COLOR;
-      const alpha = result.valid ? DBG_VALID_ALPHA  : DBG_INVALID_ALPHA;
+      const hit   = reachedKeys.has(`${target.col},${target.row}`);
+      const color = hit ? DBG_VALID_COLOR  : DBG_INVALID_COLOR;
+      const alpha = hit ? DBG_VALID_ALPHA  : DBG_INVALID_ALPHA;
       this.debugGraphics.fillStyle(color, alpha);
       this.debugGraphics.fillRect(x + inset, y + inset, s - inset * 2, s - inset * 2);
     }

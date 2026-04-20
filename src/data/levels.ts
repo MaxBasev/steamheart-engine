@@ -492,4 +492,113 @@ export const LEVELS: LevelData[] = [
       failAt:        100,
     } satisfies PressureConfig,
   },
+
+  // ── Level 15 ─────────────────────────────────────────────────────────────────
+  // "Twin Outputs" — first level with two targets.
+  // Both outputs must be connected to the source simultaneously.
+  // The player must create a branching gear path — a single linear chain
+  // cannot reach two targets at opposite corners.
+  //
+  // Grid 7×5. Source center-left (0,2).
+  // TARGET A: top-right    (6,0)
+  // TARGET B: bottom-right (6,4)
+  //
+  // Locked col 3, rows 1–3: forces the branch to happen in the left half.
+  // Both outputs sit at the far right, so the player must route two arms
+  // around the wall and up/down to reach each corner.
+  //
+  // One valid solution:
+  //   Branch at (1,2): arm up → (1,1)→(1,0)→(2,0)→(3,0)→(4,0)→(5,0)→(6,0) T_A
+  //                    arm down→ (1,3)→(1,4)→(2,4)→(3,4)→(4,4)→(5,4)→(6,4) T_B
+  //   + (1,2) itself = 1 + 6 + 6 = 13 placed gears; queue has 14 (1 spare).
+  {
+    id:          'level_15',
+    title:       'Level 15 — Twin Outputs',
+    cols:        7,
+    rows:        5,
+    sourceCol:   0,
+    sourceRow:   2,
+    targetCol:   6,
+    targetRow:   0,
+    extraTargets: [{ col: 6, row: 4 }],
+    lockedCells: [
+      { col: 3, row: 1 },
+      { col: 3, row: 2 },
+      { col: 3, row: 3 },
+    ],
+    queue: [
+      'gear','gear','gear','gear','gear','gear','gear',
+      'gear','gear','gear','gear','gear','gear','gear',
+    ],
+    instruction: 'Both outputs must activate at the same time — you need to branch.',
+  },
+
+  // ── Level 16 ─────────────────────────────────────────────────────────────────
+  // "The Divide" — two outputs, corners mandatory, zero spares, no pressure.
+  //
+  // The path MUST make 90° turns at two specific cells. Only a correctly-rotated
+  // corner gear works there — the walls leave no other direction to exit.
+  // If the corner is placed with wrong rotation the chain breaks.
+  // The queue has only 15 gears: not enough to fill all 17 cells with gears alone,
+  // so the 2 corners in the queue MUST be used at the turning cells.
+  //
+  // Grid 10×7. Source (0,3). TARGET A (9,0). TARGET B (9,6).
+  //
+  // Wall A (col 2): fully locked except row 3 — pre-placed H-axle forces
+  //                 all traffic through (2,3) horizontally.
+  // Wall B (col 5): rows 2-4 locked — cross at rows 0-1 or 5-6 only.
+  // Wall C (col 7): rows 1-5 locked — exit at row 0 (top) or row 6 (bottom) only.
+  // Wall D (col 4, rows 1-5 on top/bottom boundary): not needed — walls A-C already
+  //                 force the turning cells to be at (4,0) and (4,6).
+  //
+  // Unique solution:
+  //   Shared (3 gears): (1,3) → AXLE(2,3) → (3,3) → (4,3)   ← branch here
+  //
+  //   Top arm — comes up col 4 then turns RIGHT into row 0:
+  //     (4,2) gear → (4,1) gear → CORNER(4,0, rot=0 right+down) → (5,0) gear
+  //     → (6,0) gear → (7,0) gear → (8,0) gear → TARGET A(9,0)
+  //     rot=0 accepts from below ("down" port) and exits right ("right" port) ✓
+  //     Any other rotation at (4,0) severs the chain.
+  //
+  //   Bottom arm — goes down col 4 then turns RIGHT into row 6:
+  //     (4,4) gear → (4,5) gear → CORNER(4,6, rot=3 up+right) → (5,6) gear
+  //     → (6,6) gear → (7,6) gear → (8,6) gear → TARGET B(9,6)
+  //     rot=3 accepts from above ("up" port) and exits right ("right" port) ✓
+  //
+  //   Player pieces: 3 shared + 2+1corner+4 top + 2+1corner+4 bottom = 17 total
+  //   Queue: 15 gears + 2 corners = 17 pieces, 0 spares.
+  {
+    id:          'level_16',
+    title:       'Level 16 — The Divide',
+    cols:        10,
+    rows:        7,
+    sourceCol:   0,
+    sourceRow:   3,
+    targetCol:   9,
+    targetRow:   0,
+    extraTargets: [{ col: 9, row: 6 }],
+    lockedCells: [
+      // Wall A: col 2 fully blocked except row 3 (axle lives there)
+      { col: 2, row: 0 }, { col: 2, row: 1 }, { col: 2, row: 2 },
+      { col: 2, row: 4 }, { col: 2, row: 5 }, { col: 2, row: 6 },
+      // Wall B: col 5 center block
+      { col: 5, row: 2 }, { col: 5, row: 3 }, { col: 5, row: 4 },
+      // Wall C: col 7 gate — only rows 0 and 6 open
+      { col: 7, row: 1 }, { col: 7, row: 2 }, { col: 7, row: 3 },
+      { col: 7, row: 4 }, { col: 7, row: 5 },
+    ],
+    prePlacedParts: [
+      { col: 2, row: 3, part: { type: 'axle', rotation: 0 } },  // H-axle chokepoint
+    ] satisfies PrePlacedPart[],
+    //   queue order: get gears to build the shared trunk and both straight arms,
+    //   corners arrive when the arms need to turn (positions 6 and 11).
+    queue: [
+      'gear','gear','gear','gear','gear',
+      'corner',
+      'gear','gear','gear','gear',
+      'corner',
+      'gear','gear','gear','gear','gear','gear',
+    ], // 15 gears + 2 corners = 17, zero spares
+    instruction: 'The corners must turn the path — wrong rotation breaks the chain.',
+  },
 ];

@@ -5,6 +5,8 @@ export interface ChainResult {
   valid: boolean;
   /** Every part cell that was reachable from source during BFS. */
   reachable: Cell[];
+  /** Which target cells were actually reached (useful for multi-target debug overlay). */
+  reachedTargets: Cell[];
 }
 
 type Direction = 'up' | 'down' | 'left' | 'right';
@@ -29,13 +31,15 @@ const OPPOSITE: Record<Direction, Direction> = {
  * Locked / empty cells are never traversed.
  */
 export function validateChain(grid: Grid): ChainResult {
-  const source = grid.getSourceCell();
-  const target = grid.getTargetCell();
-  if (!source || !target) return { valid: false, reachable: [] };
+  const source  = grid.getSourceCell();
+  const targets = grid.getTargetCells();
+  if (!source || targets.length === 0) return { valid: false, reachable: [], reachedTargets: [] };
 
-  const visited  = new Set<string>();
+  const targetKeys = new Set(targets.map(cellKey));
+  const visited    = new Set<string>();
   const queue: Cell[] = [source];
-  const reachable: Cell[] = [];
+  const reachable: Cell[]      = [];
+  const reachedTargets: Cell[] = [];
 
   visited.add(cellKey(source));
 
@@ -46,14 +50,15 @@ export function validateChain(grid: Grid): ChainResult {
       const k = cellKey(neighbor);
       if (visited.has(k)) continue;
 
-      // Both sides of the connection must expose a port in that direction
-      if (!canConnect(current, dir))           continue;
+      if (!canConnect(current, dir))            continue;
       if (!canConnect(neighbor, OPPOSITE[dir])) continue;
 
       visited.add(k);
 
       if (neighbor.state === 'target') {
-        return { valid: true, reachable };
+        if (targetKeys.has(k)) reachedTargets.push(neighbor);
+        // Don't push target into BFS queue — it's a terminal node
+        continue;
       }
 
       if (neighbor.state === 'occupied' && neighbor.part !== null) {
@@ -63,7 +68,8 @@ export function validateChain(grid: Grid): ChainResult {
     }
   }
 
-  return { valid: false, reachable };
+  const valid = reachedTargets.length === targets.length;
+  return { valid, reachable, reachedTargets };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

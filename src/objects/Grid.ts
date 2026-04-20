@@ -64,8 +64,8 @@ export class Grid {
   private readonly gearAngles = new Map<string, number>();
   // All game objects created by buildFloorTiles() — destroyed explicitly on destroy()
   private readonly floorObjects: Phaser.GameObjects.GameObject[] = [];
-  // Reference to the target floor tile so we can tint it on success
-  private targetFloorImage: Phaser.GameObjects.Image | null = null;
+  // All target floor tiles — tinted green on successful activation
+  private targetFloorImages: Phaser.GameObjects.Image[] = [];
   // Speed multiplier applied to gear rotation — tweened on win/fail
   private gearSpeedMult = 1.0;
 
@@ -125,7 +125,7 @@ export class Grid {
         img.setDepth(0);
         this.floorObjects.push(img);
 
-        if (cell.state === 'target') this.targetFloorImage = img;
+        if (cell.state === 'target') this.targetFloorImages.push(img);
 
         // Source / target: overlay the looping energy animation at ~half tile size
         const animKey  = cell.state === 'source' ? 'source-spin'  : cell.state === 'target' ? 'target-pulse' : null;
@@ -144,11 +144,9 @@ export class Grid {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
-  /** Tint the target floor tile green to signal a successful activation. */
+  /** Tint all target floor tiles green to signal a successful activation. */
   setTargetActivated(): void {
-    if (this.targetFloorImage) {
-      this.targetFloorImage.setTint(0x44ff88);
-    }
+    for (const img of this.targetFloorImages) img.setTint(0x44ff88);
   }
 
   /** Place a part in an empty cell. Returns false if cell is not empty. */
@@ -180,6 +178,16 @@ export class Grid {
 
   getTargetCell(): Cell | null {
     return this.findFirst('target');
+  }
+
+  getTargetCells(): Cell[] {
+    const result: Cell[] = [];
+    for (const row of this.cells) {
+      for (const cell of row) {
+        if (cell.state === 'target') result.push(cell);
+      }
+    }
+    return result;
   }
 
   /** Pixel → grid coordinate. Returns null if outside grid bounds. */

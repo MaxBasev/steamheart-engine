@@ -55,8 +55,11 @@ export interface LevelData {
   sourceRow:      number;
   targetCol:      number;
   targetRow:      number;
+  // Optional extra targets — if present, ALL targets must be reached to win.
+  // targetCol/targetRow is always included automatically; list only the extras here.
+  extraTargets?:  Array<{ col: number; row: number }>;
   lockedCells:    Array<{ col: number; row: number }>;
-  prePlacedParts?: PrePlacedPart[];  // parts already on the board, player cannot move them
+  prePlacedParts?: PrePlacedPart[];
   queue:          PartType[];
   instruction?:   string;
   pressure?:      PressureConfig;
