@@ -79,6 +79,7 @@ export class GameScene extends Phaser.Scene {
   private currentLevel!:    LevelData;
   private state: GameState  = freshState(LEVELS[0]);
   private soundMuted        = false;
+  private isTouchDevice     = false;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -137,10 +138,13 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false)
       .setDepth(11);
 
+    this.isTouchDevice = this.sys.game.device.input.touch;
+
     this.addBackground();
     this.startMusic();
     this.setupInput();
     this.addHUD(level);
+    this.addMobileControls();
     this.updateQueueHUD();
     this.updatePressureHUD();
   }
@@ -461,6 +465,35 @@ export class GameScene extends Phaser.Scene {
         btn.setText(label());
         btn.setColor(this.soundMuted ? '#333333' : '#444444');
       });
+  }
+
+  private addMobileControls(): void {
+    if (!this.isTouchDevice) return;
+
+    const { width, height } = this.scale;
+    const BW = 150, BH = 60, DEPTH = 15;
+    const by = height - 38;
+
+    const makeBtn = (bx: number, label: string, cb: () => void): void => {
+      // Tap-target rectangle (interactive)
+      this.add.rectangle(bx, by, BW, BH, 0x1a1410, 0.88)
+        .setDepth(DEPTH)
+        .setInteractive()
+        .on('pointerdown', cb);
+      // Border
+      const g = this.add.graphics().setDepth(DEPTH + 1);
+      g.lineStyle(1, 0x8a6010, 0.8);
+      g.strokeRoundedRect(bx - BW / 2, by - BH / 2, BW, BH, 8);
+      // Label
+      this.add.text(bx, by, label, {
+        fontSize: '19px', fontFamily: 'monospace', color: '#b87820',
+      }).setOrigin(0.5).setDepth(DEPTH + 2);
+    };
+
+    // Left: rotate (before activation) / retry (after)  → same key handler
+    makeBtn(BW / 2 + 12, '⟳  ROTATE', () => this.onRKey());
+    // Right: activate (before win) / next level (after win) → same key handler
+    makeBtn(width - BW / 2 - 12, '▶  GO', () => this.onSpaceKey());
   }
 
   private updateQueueHUD(): void {

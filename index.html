@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
     <title>Steamheart — a machine-building puzzle game</title>
     <meta name="description" content="Build steam-powered machines by placing gears and axles to connect the source to the target. A steampunk puzzle game made for Gamedev.js Jam 2026." />
@@ -48,9 +48,27 @@
       canvas {
         display: block;
       }
+      #rotate-prompt {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #111;
+        color: #b87820;
+        font-family: monospace;
+        font-size: 18px;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        z-index: 9999;
+        line-height: 1.6;
+      }
+      @media (orientation: portrait) {
+        #rotate-prompt { display: flex; }
+      }
     </style>
   </head>
   <body>
+    <div id="rotate-prompt">↩ Please rotate your device<br>to landscape mode</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
