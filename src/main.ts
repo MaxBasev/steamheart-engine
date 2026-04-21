@@ -4,6 +4,7 @@ import { PreloadScene }     from './scenes/PreloadScene';
 import { MainMenuScene }    from './scenes/MainMenuScene';
 import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { CreditsScene }     from './scenes/CreditsScene';
+import { EndScene }         from './scenes/EndScene';
 import { GameScene }        from './scenes/GameScene';
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -11,7 +12,7 @@ const config: Phaser.Types.Core.GameConfig = {
   width:  1280,
   height: 720,
   backgroundColor: '#111111',
-  scene: [BootScene, PreloadScene, MainMenuScene, LevelSelectScene, CreditsScene, GameScene],
+  scene: [BootScene, PreloadScene, MainMenuScene, LevelSelectScene, CreditsScene, EndScene, GameScene],
   scale: {
     mode:       Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

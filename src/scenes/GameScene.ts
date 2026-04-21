@@ -33,24 +33,26 @@ const PANEL_FILL_ALPHA  = 0.92;
 
 // ── Game state ────────────────────────────────────────────────────────────────
 interface GameState {
-  isActivated: boolean;
-  isWon:       boolean;
-  isFailed:    boolean;
-  queue:       PartType[];    // queue[0] = part in hand; shift() on placement
-  rotation:    0 | 1 | 2 | 3; // current part-in-hand rotation; resets on retry/next level
-  pressure:    number;        // current pressure value; 0 when level has no pressure
-  movesCount:  number;        // pieces placed so far this attempt
+  isActivated:   boolean;
+  isWon:         boolean;
+  isFailed:      boolean;
+  queue:         PartType[];    // queue[0] = part in hand; shift() on placement
+  rotation:      0 | 1 | 2 | 3; // current part-in-hand rotation; resets on retry/next level
+  pressure:      number;        // current pressure value; 0 when level has no pressure
+  movesCount:    number;        // pieces placed so far this attempt
+  discardTokens: number;        // remaining discards for this attempt
 }
 
 function freshState(level: LevelData): GameState {
   return {
-    isActivated: false,
-    isWon:       false,
-    isFailed:    false,
-    queue:       [...level.queue],
-    rotation:    0,
-    pressure:    level.pressure?.startValue ?? 0,
-    movesCount:  0,
+    isActivated:   false,
+    isWon:         false,
+    isFailed:      false,
+    queue:         [...level.queue],
+    rotation:      0,
+    pressure:      level.pressure?.startValue ?? 0,
+    movesCount:    0,
+    discardTokens: 0,  // set per-level in create() based on level index
   };
 }
 
@@ -117,6 +119,9 @@ export class GameScene extends Phaser.Scene {
     this.currentLevel = level;
 
     this.state = freshState(level);
+    this.state.discardTokens = this.currentLevelIndex < 5  ? 3
+                             : this.currentLevelIndex < 12 ? 2
+                             : this.currentLevelIndex < 18 ? 1 : 0;
 
     const { width, height } = this.scale;
     const originX = Math.floor((width  - level.cols * CELL_SIZE) / 2);
@@ -257,6 +262,8 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-SPACE', () => this.onSpaceKey());
     // R: rotate part-in-hand before activation; retry after activation
     this.input.keyboard!.on('keydown-R',     () => this.onRKey());
+    // D: discard current part if tokens remain
+    this.input.keyboard!.on('keydown-D',   () => this.onDiscard());
     // M / Escape: return to main menu
     this.input.keyboard!.on('keydown-M',   () => this.scene.start('MainMenuScene'));
     this.input.keyboard!.on('keydown-ESC', () => this.scene.start('MainMenuScene'));
@@ -357,6 +364,7 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.flash(350, 160, 255, 160);
       this.sound.play('sfx-gears', { volume: 0.55, loop: false, mute: this.soundMuted });
       this.grid.setTargetActivated();
+      this.burstWinParticles();
       this.time.delayedCall(600, () => this.showResult(true));
     } else {
       this.cameras.main.shake(380, 0.013);
@@ -377,19 +385,31 @@ export class GameScene extends Phaser.Scene {
   private onRotate(): void {
     this.state.rotation = ((this.state.rotation + 1) % 4) as 0 | 1 | 2 | 3;
     this.updateQueueHUD();
-    // Clear hover so it redraws immediately with the new orientation preview
+    this.hoverGraphics.clear();
+  }
+
+  private onDiscard(): void {
+    if (this.state.isActivated) return;
+    if (this.state.discardTokens <= 0) return;
+    if (this.state.queue.length === 0) return;
+    this.state.queue.shift();
+    this.state.discardTokens--;
+    this.state.rotation = 0;
+    this.updateQueueHUD();
     this.hoverGraphics.clear();
   }
 
   private onNextLevel(): void {
+    this.tweens.killTweensOf(this.resultGraphics);
     this.grid.destroy();
     this.scene.restart({ levelIndex: this.currentLevelIndex + 1 });
   }
 
   private onRetry(): void {
+    this.tweens.killTweensOf(this.resultGraphics);
     this.grid.destroy();
     if (this.state.isWon && this.isFinalLevel()) {
-      this.scene.start('MainMenuScene');
+      this.scene.start('EndScene');
     } else {
       this.scene.restart({ levelIndex: this.currentLevelIndex });
     }
@@ -414,6 +434,28 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updatePressureHUD();
+  }
+
+  private burstWinParticles(): void {
+    if (!this.textures.exists('particle')) {
+      const g = this.add.graphics();
+      g.fillStyle(0xffffff, 1).fillRect(0, 0, 4, 4);
+      g.generateTexture('particle', 4, 4);
+      g.destroy();
+    }
+    const half = this.grid.cellSize / 2;
+    for (const cell of this.grid.getTargetCells()) {
+      const { x, y } = this.grid.cellToWorld(cell.col, cell.row);
+      const emitter = this.add.particles(x + half, y + half, 'particle', {
+        speed:    { min: 50, max: 160 },
+        angle:    { min: 0, max: 360 },
+        scale:    { start: 1.8, end: 0 },
+        lifespan: 650,
+        tint:     [0xb87820, 0xffe090, 0xffffff],
+        emitting: false,
+      });
+      emitter.explode(22);
+    }
   }
 
   private onPressureFailure(): void {
@@ -595,7 +637,10 @@ export class GameScene extends Phaser.Scene {
       : queue[0] === 'corner'
         ? `  ${CORNER_SYMBOLS[rotation]}`
         : '';
-    this.statusText.setText(`[SPACE] activate   [R] rotate${rotHint}   (${queue.length} left)`);
+    const discardHint = this.state.discardTokens > 0
+      ? `   [D] discard (${this.state.discardTokens})`
+      : '';
+    this.statusText.setText(`[SPACE] activate   [R] rotate${rotHint}   (${queue.length} left)${discardHint}`);
   }
 
   private drawPartIcon(x: number, y: number, size: number, part: PartType, rotation: number, active: boolean): void {
@@ -739,8 +784,8 @@ export class GameScene extends Phaser.Scene {
       const isNew  = moves === best;
       const movesStr = `${moves} moves${isNew ? '  ★ best' : `  (best: ${best})`}`;
       if (this.isFinalLevel()) {
-        subline    = `To be continued...  ·  ${movesStr}  —  [R] play again`;
-        statusLine = 'TO BE CONTINUED — [R] play again';
+        subline    = `${movesStr}  —  [SPACE] continue  ·  chapter complete`;
+        statusLine = 'CHAPTER COMPLETE — [SPACE] continue';
       } else {
         subline    = `${movesStr}  —  [SPACE] next level   [R] retry`;
         statusLine = 'ACTIVATED — [SPACE] next level   [R] retry';
@@ -761,6 +806,18 @@ export class GameScene extends Phaser.Scene {
     this.statusText.setText(statusLine);
     this.queueGraphics.clear();
     this.updateMobileButtons();
+
+    if (valid) {
+      this.resultGraphics.setAlpha(1);
+      this.tweens.add({
+        targets:  this.resultGraphics,
+        alpha:    { from: 0.75, to: 1 },
+        duration: 500,
+        yoyo:     true,
+        repeat:   -1,
+        ease:     'Sine.easeInOut',
+      });
+    }
   }
 
   // ── Chain debug overlay ────────────────────────────────────────────────────
