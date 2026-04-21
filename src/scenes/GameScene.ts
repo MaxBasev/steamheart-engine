@@ -104,6 +104,7 @@ export class GameScene extends Phaser.Scene {
   private state: GameState  = freshState(LEVELS[0]);
   private movesText!:          Phaser.GameObjects.Text;
   private undoStack:            Array<{ col: number; row: number; partType: PartType; rotation: 0|1|2|3 }> = [];
+  private resultButtons:        Phaser.GameObjects.Text[] = [];
   private tutorialActive        = false;
   private soundMuted           = false;
   private isTouchDevice        = false;
@@ -494,6 +495,8 @@ export class GameScene extends Phaser.Scene {
 
   private onNextLevel(): void {
     this.tweens.killTweensOf(this.resultGraphics);
+    this.resultButtons.forEach(b => b.destroy());
+    this.resultButtons = [];
     this.undoStack = [];
     this.grid.destroy();
     this.scene.restart({ levelIndex: this.currentLevelIndex + 1 });
@@ -501,6 +504,8 @@ export class GameScene extends Phaser.Scene {
 
   private onRetry(): void {
     this.tweens.killTweensOf(this.resultGraphics);
+    this.resultButtons.forEach(b => b.destroy());
+    this.resultButtons = [];
     this.undoStack = [];
     this.grid.destroy();
     if (this.state.isWon && this.isFinalLevel()) {
@@ -619,9 +624,12 @@ export class GameScene extends Phaser.Scene {
       this.pressureBarFill = undefined;
     }
 
-    // Moves counter — top-right, below sound toggle
+    // Level progress + moves counter — top-right
     const { width } = this.scale;
-    this.movesText = this.add.text(width - 12, 30, 'Moves: 0', {
+    this.add.text(width - 12, 30, `${this.currentLevelIndex + 1} / ${LEVELS.length}`, {
+      fontSize: '12px', fontFamily: 'monospace', color: '#333333',
+    }).setOrigin(1, 0);
+    this.movesText = this.add.text(width - 12, 46, 'Moves: 0', {
       fontSize: '12px', fontFamily: 'monospace', color: '#555555',
     }).setOrigin(1, 0);
 
@@ -899,6 +907,7 @@ export class GameScene extends Phaser.Scene {
     this.statusText.setText(statusLine);
     this.queueGraphics.clear();
     this.updateMobileButtons();
+    this.addResultButtons(valid);
 
     if (valid) {
       this.resultGraphics.setAlpha(1);
@@ -910,6 +919,34 @@ export class GameScene extends Phaser.Scene {
         repeat:   -1,
         ease:     'Sine.easeInOut',
       });
+    }
+  }
+
+  private addResultButtons(valid: boolean): void {
+    this.resultButtons.forEach(b => b.destroy());
+    this.resultButtons = [];
+
+    const { width } = this.scale;
+    const cx = width / 2;
+    const by = 158;  // below the result panel (panelY=40 + panelH=100 + gap)
+    const s  = { fontSize: '13px', fontFamily: 'monospace' };
+
+    const makeBtn = (x: number, label: string, color: string, cb: () => void) => {
+      const btn = this.add.text(x, by, label, { ...s, color: '#2a2a2a' })
+        .setOrigin(0.5).setDepth(12).setInteractive({ useHandCursor: true });
+      btn.on('pointerover',  () => btn.setColor(color));
+      btn.on('pointerout',   () => btn.setColor('#2a2a2a'));
+      btn.on('pointerdown',  cb);
+      this.resultButtons.push(btn);
+    };
+
+    if (valid && !this.isFinalLevel()) {
+      makeBtn(cx - 80, '[ RETRY ]',      '#cc8844', () => this.onRetry());
+      makeBtn(cx + 80, '[ NEXT LEVEL ]', '#44cc88', () => this.onNextLevel());
+    } else if (valid && this.isFinalLevel()) {
+      makeBtn(cx,      '[ CONTINUE ]',   '#44cc88', () => this.onRetry());
+    } else {
+      makeBtn(cx,      '[ RETRY ]',      '#cc8844', () => this.onRetry());
     }
   }
 
