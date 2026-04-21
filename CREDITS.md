@@ -2,7 +2,7 @@
 
 ## Game
 
-**Steamheart** — created by Max Basev for Gamedev.js Jam 2026 (theme: Machines).
+**Steamheart Engine** — created by Max Basev for Gamedev.js Jam 2026 (theme: Machines).
 
 ---
 
