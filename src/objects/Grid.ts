@@ -149,6 +149,17 @@ export class Grid {
     for (const img of this.targetFloorImages) img.setTint(0x44ff88);
   }
 
+  /** Remove a placed part from a cell. Returns the part, or null if cell wasn't occupied. */
+  removeAt(col: number, row: number): Part | null {
+    const cell = this.getCell(col, row);
+    if (!cell || cell.state !== 'occupied') return null;
+    const part = cell.part;
+    cell.state = 'empty';
+    cell.part  = null;
+    this.draw();
+    return part;
+  }
+
   /** Place a part in an empty cell. Returns false if cell is not empty. */
   placeAt(col: number, row: number, part: Part): boolean {
     const cell = this.getCell(col, row);

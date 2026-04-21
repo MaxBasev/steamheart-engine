@@ -103,6 +103,8 @@ export class GameScene extends Phaser.Scene {
   private currentLevel!:    LevelData;
   private state: GameState  = freshState(LEVELS[0]);
   private movesText!:          Phaser.GameObjects.Text;
+  private undoStack:            Array<{ col: number; row: number; partType: PartType; rotation: 0|1|2|3 }> = [];
+  private tutorialActive        = false;
   private soundMuted           = false;
   private isTouchDevice        = false;
   private mobileBtnRotate?:    Phaser.GameObjects.Text;
@@ -119,6 +121,7 @@ export class GameScene extends Phaser.Scene {
     this.currentLevel = level;
 
     this.state = freshState(level);
+    this.undoStack = [];
     this.state.discardTokens = this.currentLevelIndex < 5  ? 3
                              : this.currentLevelIndex < 12 ? 2
                              : this.currentLevelIndex < 18 ? 1 : 0;
@@ -180,6 +183,57 @@ export class GameScene extends Phaser.Scene {
     this.addMobileControls();
     this.updateQueueHUD();
     this.updatePressureHUD();
+
+    if (this.currentLevelIndex === 0 && !localStorage.getItem('steamheart_tutorial_seen')) {
+      this.tutorialActive = true;
+      this.showTutorialOverlay();
+    }
+  }
+
+  // ── Tutorial overlay (level 1, first visit only) ──────────────────────
+
+  private showTutorialOverlay(): void {
+    const { width, height } = this.scale;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    const dim = this.add.rectangle(0, 0, width, height, 0x000000, 0.55)
+      .setOrigin(0).setDepth(20).setInteractive();
+
+    const pw = 460, ph = 220;
+    const px = cx - pw / 2, py = cy - ph / 2;
+    const panel = this.add.graphics().setDepth(21);
+    panel.fillStyle(0x100c08, 0.96);
+    panel.fillRoundedRect(px, py, pw, ph, 8);
+    panel.lineStyle(1, 0xb87820, 0.5);
+    panel.strokeRoundedRect(px, py, pw, ph, 8);
+
+    const style = (size: string, color: string) =>
+      ({ fontSize: size, fontFamily: 'monospace', color });
+
+    const title = this.add.text(cx, py + 30, 'HOW TO PLAY', style('15px', '#b87820')).setOrigin(0.5).setDepth(22);
+
+    const lines = [
+      { y: py + 68,  text: 'CLICK on a cell to place your current part' },
+      { y: py + 92,  text: 'R  to rotate the part before placing' },
+      { y: py + 116, text: 'SPACE  to activate the machine' },
+      { y: py + 140, text: 'U  to undo the last placement' },
+    ];
+    const labels = lines.map(l =>
+      this.add.text(cx, l.y, l.text, style('12px', '#777777')).setOrigin(0.5).setDepth(22),
+    );
+
+    const hint = this.add.text(cx, py + ph - 22, 'click anywhere to start', style('10px', '#3a3a3a'))
+      .setOrigin(0.5).setDepth(22);
+
+    const dismiss = () => {
+      this.tutorialActive = false;
+      localStorage.setItem('steamheart_tutorial_seen', '1');
+      [dim, panel, title, hint, ...labels].forEach(o => o.destroy());
+    };
+
+    dim.on('pointerdown', dismiss);
+    this.input.keyboard!.once('keydown', dismiss);
   }
 
   // ── Music ─────────────────────────────────────────────────────────────────
@@ -262,6 +316,8 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-SPACE', () => this.onSpaceKey());
     // R: rotate part-in-hand before activation; retry after activation
     this.input.keyboard!.on('keydown-R',     () => this.onRKey());
+    // U: undo last placement
+    this.input.keyboard!.on('keydown-U',   () => this.onUndo());
     // D: discard current part if tokens remain
     this.input.keyboard!.on('keydown-D',   () => this.onDiscard());
     // M / Escape: return to main menu
@@ -316,6 +372,7 @@ export class GameScene extends Phaser.Scene {
 
   private onClickDown(pointer: Phaser.Input.Pointer): void {
     if (this.state.isActivated) return;
+    if (this.tutorialActive) return;
 
     const currentPart = this.state.queue[0] ?? null;
     if (!currentPart) return;
@@ -323,19 +380,19 @@ export class GameScene extends Phaser.Scene {
     const coord = this.grid.worldToCell(pointer.x, pointer.y);
     if (!coord) return;
 
-    const placed = this.grid.placeAt(coord.col, coord.row, { type: currentPart, rotation: this.state.rotation });
+    const rotation = this.state.rotation;
+    const placed = this.grid.placeAt(coord.col, coord.row, { type: currentPart, rotation });
     if (placed) {
       this.sound.play('sfx-place', { volume: 0.6, mute: this.soundMuted });
       this.grid.pulsePlacement();
+      this.undoStack.push({ col: coord.col, row: coord.row, partType: currentPart, rotation });
       this.state.queue.shift();
       this.state.movesCount++;
       this.debugGraphics.clear();
       this.updateQueueHUD();
       this.movesText.setText(`Moves: ${this.state.movesCount}`);
-      console.log(
-        `[Queue] ${currentPart} placed at (${coord.col}, ${coord.row})` +
-        ` — ${this.state.queue.length} left`,
-      );
+    } else {
+      this.playClunk();
     }
   }
 
@@ -388,6 +445,39 @@ export class GameScene extends Phaser.Scene {
     this.hoverGraphics.clear();
   }
 
+  private onUndo(): void {
+    if (this.state.isActivated) return;
+    const entry = this.undoStack.pop();
+    if (!entry) return;
+    const part = this.grid.removeAt(entry.col, entry.row);
+    if (!part) return;
+    this.state.queue.unshift(entry.partType);
+    this.state.rotation = entry.rotation;
+    this.state.movesCount = Math.max(0, this.state.movesCount - 1);
+    this.debugGraphics.clear();
+    this.updateQueueHUD();
+    this.movesText.setText(`Moves: ${this.state.movesCount}`);
+  }
+
+  private playClunk(): void {
+    if (this.soundMuted) return;
+    try {
+      const ctx  = new AudioContext();
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(160, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(70, ctx.currentTime + 0.09);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.12);
+      osc.onended = () => ctx.close();
+    } catch { /* ignore in environments without Web Audio */ }
+  }
+
   private onDiscard(): void {
     if (this.state.isActivated) return;
     if (this.state.discardTokens <= 0) return;
@@ -401,12 +491,14 @@ export class GameScene extends Phaser.Scene {
 
   private onNextLevel(): void {
     this.tweens.killTweensOf(this.resultGraphics);
+    this.undoStack = [];
     this.grid.destroy();
     this.scene.restart({ levelIndex: this.currentLevelIndex + 1 });
   }
 
   private onRetry(): void {
     this.tweens.killTweensOf(this.resultGraphics);
+    this.undoStack = [];
     this.grid.destroy();
     if (this.state.isWon && this.isFinalLevel()) {
       this.scene.start('EndScene');
@@ -637,10 +729,9 @@ export class GameScene extends Phaser.Scene {
       : queue[0] === 'corner'
         ? `  ${CORNER_SYMBOLS[rotation]}`
         : '';
-    const discardHint = this.state.discardTokens > 0
-      ? `   [D] discard (${this.state.discardTokens})`
-      : '';
-    this.statusText.setText(`[SPACE] activate   [R] rotate${rotHint}   (${queue.length} left)${discardHint}`);
+    const discardHint = this.state.discardTokens > 0 ? `   [D] discard (${this.state.discardTokens})` : '';
+    const undoHint    = this.undoStack.length > 0    ? `   [U] undo`                                   : '';
+    this.statusText.setText(`[SPACE] activate   [R] rotate${rotHint}   (${queue.length} left)${discardHint}${undoHint}`);
   }
 
   private drawPartIcon(x: number, y: number, size: number, part: PartType, rotation: number, active: boolean): void {

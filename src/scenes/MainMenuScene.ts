@@ -1,9 +1,14 @@
 import Phaser from 'phaser';
+import { LEVELS } from '../data/levels';
 
-const BG  = 0x0c0906;
-const GOLD = '#b87820';
-const DIM  = '#444444';
-const DARK = '#222222';
+const BG   = 0x0c0906;
+const GOLD  = '#b87820';
+const DIM   = '#444444';
+const DARK  = '#222222';
+
+function countCompleted(): number {
+  return LEVELS.filter(l => localStorage.getItem(`steamheart_completed_${l.id}`) !== null).length;
+}
 
 export class MainMenuScene extends Phaser.Scene {
   constructor() {
@@ -14,11 +19,9 @@ export class MainMenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const cx = width / 2;
 
-    // Background
     this.add.rectangle(0, 0, width, height, BG).setOrigin(0);
 
-    // Decorative gear rings — purely visual
-    this.drawDecorativeGears(cx, height / 2);
+    this.spawnAnimatedGears(cx, height / 2);
 
     // Title
     this.add.text(cx, height / 2 - 140, 'STEAMHEART', {
@@ -33,13 +36,20 @@ export class MainMenuScene extends Phaser.Scene {
       fontSize: '12px', fontFamily: 'monospace', color: DIM,
     }).setOrigin(0.5);
 
-    // Menu buttons
-    const btnY  = height / 2 + 10;
-    const btnGap = 56;
+    // Progress counter
+    const done = countCompleted();
+    if (done > 0) {
+      this.add.text(cx, height / 2 - 34, `${done} / ${LEVELS.length} levels completed`, {
+        fontSize: '11px', fontFamily: 'monospace', color: done === LEVELS.length ? '#5a9a5a' : '#3a3a3a',
+      }).setOrigin(0.5);
+    }
 
-    this.addButton(cx, btnY,             '▶  NEW GAME',     () => this.startNewGame());
-    this.addButton(cx, btnY + btnGap,    '≡  LEVEL SELECT', () => this.scene.start('LevelSelectScene'));
-    this.addButton(cx, btnY + btnGap * 2,'✦  CREDITS',      () => this.scene.start('CreditsScene'));
+    // Buttons
+    const btnY  = height / 2 + 14;
+    const btnGap = 56;
+    this.addButton(cx, btnY,              '▶  NEW GAME',     () => this.scene.start('GameScene', { levelIndex: 0 }));
+    this.addButton(cx, btnY + btnGap,     '≡  LEVEL SELECT', () => this.scene.start('LevelSelectScene'));
+    this.addButton(cx, btnY + btnGap * 2, '✦  CREDITS',      () => this.scene.start('CreditsScene'));
 
     // Bottom note
     this.add.text(cx, height - 20, 'Gamedev.js Jam 2026  ·  theme: Machines', {
@@ -57,30 +67,39 @@ export class MainMenuScene extends Phaser.Scene {
     btn.on('pointerdown',  cb);
   }
 
-  private startNewGame(): void {
-    this.scene.start('GameScene', { levelIndex: 0 });
-  }
+  private spawnAnimatedGears(cx: number, cy: number): void {
+    // Each gear is its own Graphics object centered at the gear's position,
+    // drawn around origin 0,0 so Phaser's angle tween rotates it in place.
+    const gears = [
+      { x: cx - 260, y: cy - 80,   r: 90,  teeth: 18, speed: 14000, dir:  1 },
+      { x: cx + 280, y: cy + 60,   r: 110, teeth: 22, speed: 18000, dir: -1 },
+      { x: cx - 340, y: cy + 160,  r: 60,  teeth: 12, speed:  9000, dir:  1 },
+      { x: cx + 160, y: cy - 160,  r: 70,  teeth: 14, speed: 11000, dir: -1 },
+    ];
 
-  private drawDecorativeGears(cx: number, cy: number): void {
-    const g = this.add.graphics().setAlpha(0.07);
+    for (const spec of gears) {
+      const g = this.add.graphics();
+      g.setPosition(spec.x, spec.y);
+      g.setAlpha(0.08);
 
-    const drawGear = (x: number, y: number, r: number, teeth: number) => {
       g.lineStyle(2, 0xb87820, 1);
-      g.strokeCircle(x, y, r);
-      g.strokeCircle(x, y, r * 0.42);
-      for (let i = 0; i < teeth; i++) {
-        const a  = (i / teeth) * Math.PI * 2;
-        const x1 = x + Math.cos(a) * r;
-        const y1 = y + Math.sin(a) * r;
-        const x2 = x + Math.cos(a) * (r + 10);
-        const y2 = y + Math.sin(a) * (r + 10);
-        g.lineBetween(x1, y1, x2, y2);
+      g.strokeCircle(0, 0, spec.r);
+      g.strokeCircle(0, 0, spec.r * 0.42);
+      for (let i = 0; i < spec.teeth; i++) {
+        const a = (i / spec.teeth) * Math.PI * 2;
+        g.lineBetween(
+          Math.cos(a) * spec.r,        Math.sin(a) * spec.r,
+          Math.cos(a) * (spec.r + 10), Math.sin(a) * (spec.r + 10),
+        );
       }
-    };
 
-    drawGear(cx - 260, cy - 80,  90, 18);
-    drawGear(cx + 280, cy + 60, 110, 22);
-    drawGear(cx - 340, cy + 160, 60, 12);
-    drawGear(cx + 160, cy - 160, 70, 14);
+      this.tweens.add({
+        targets:  g,
+        angle:    spec.dir * 360,
+        duration: spec.speed,
+        repeat:   -1,
+        ease:     'Linear',
+      });
+    }
   }
 }
