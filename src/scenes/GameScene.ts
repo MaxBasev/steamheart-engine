@@ -39,6 +39,7 @@ interface GameState {
   queue:       PartType[];    // queue[0] = part in hand; shift() on placement
   rotation:    0 | 1 | 2 | 3; // current part-in-hand rotation; resets on retry/next level
   pressure:    number;        // current pressure value; 0 when level has no pressure
+  movesCount:  number;        // pieces placed so far this attempt
 }
 
 function freshState(level: LevelData): GameState {
@@ -49,7 +50,24 @@ function freshState(level: LevelData): GameState {
     queue:       [...level.queue],
     rotation:    0,
     pressure:    level.pressure?.startValue ?? 0,
+    movesCount:  0,
   };
+}
+
+function bestScoreKey(levelId: string): string {
+  return `steamheart_best_${levelId}`;
+}
+
+function loadBest(levelId: string): number | null {
+  const v = localStorage.getItem(bestScoreKey(levelId));
+  return v !== null ? parseInt(v, 10) : null;
+}
+
+function saveBest(levelId: string, moves: number): void {
+  const prev = loadBest(levelId);
+  if (prev === null || moves < prev) {
+    localStorage.setItem(bestScoreKey(levelId), String(moves));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,6 +96,7 @@ export class GameScene extends Phaser.Scene {
   private currentLevelIndex = 0;
   private currentLevel!:    LevelData;
   private state: GameState  = freshState(LEVELS[0]);
+  private movesText!:          Phaser.GameObjects.Text;
   private soundMuted           = false;
   private isTouchDevice        = false;
   private mobileBtnRotate?:    Phaser.GameObjects.Text;
@@ -294,8 +313,10 @@ export class GameScene extends Phaser.Scene {
     if (placed) {
       this.sound.play('sfx-place', { volume: 0.6, mute: this.soundMuted });
       this.state.queue.shift();
+      this.state.movesCount++;
       this.debugGraphics.clear();
       this.updateQueueHUD();
+      this.movesText.setText(`Moves: ${this.state.movesCount}`);
       console.log(
         `[Queue] ${currentPart} placed at (${coord.col}, ${coord.row})` +
         ` — ${this.state.queue.length} left`,
@@ -358,7 +379,8 @@ export class GameScene extends Phaser.Scene {
 
   private onRetry(): void {
     this.grid.destroy();
-    this.scene.restart({ levelIndex: this.currentLevelIndex });
+    const target = (this.state.isWon && this.isFinalLevel()) ? 0 : this.currentLevelIndex;
+    this.scene.restart({ levelIndex: target });
   }
 
   // ── Game loop ──────────────────────────────────────────────────────────────
@@ -448,6 +470,12 @@ export class GameScene extends Phaser.Scene {
       this.pressureBarBg   = undefined;
       this.pressureBarFill = undefined;
     }
+
+    // Moves counter — top-right, below sound toggle
+    const { width } = this.scale;
+    this.movesText = this.add.text(width - 12, 30, 'Moves: 0', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#555555',
+    }).setOrigin(1, 0);
 
     // Sound toggle button
     this.addSoundToggle();
@@ -685,11 +713,16 @@ export class GameScene extends Phaser.Scene {
 
     if (valid) {
       headline = '✓  MACHINE ACTIVATED';
+      const moves = this.state.movesCount;
+      saveBest(this.currentLevel.id, moves);
+      const best   = loadBest(this.currentLevel.id)!;
+      const isNew  = moves === best;
+      const movesStr = `${moves} moves${isNew ? '  ★ best' : `  (best: ${best})`}`;
       if (this.isFinalLevel()) {
-        subline    = 'To be continued...  —  [R] play again';
+        subline    = `To be continued...  ·  ${movesStr}  —  [R] play again`;
         statusLine = 'TO BE CONTINUED — [R] play again';
       } else {
-        subline    = 'chain complete  —  [SPACE] next level   [R] retry';
+        subline    = `${movesStr}  —  [SPACE] next level   [R] retry`;
         statusLine = 'ACTIVATED — [SPACE] next level   [R] retry';
       }
     } else if (isPressureFail) {
