@@ -686,8 +686,8 @@ export class GameScene extends Phaser.Scene {
     if (valid) {
       headline = '✓  MACHINE ACTIVATED';
       if (this.isFinalLevel()) {
-        subline    = 'all machines complete!  —  [R] play again';
-        statusLine = 'ALL DONE — [R] play again';
+        subline    = 'To be continued...  —  [R] play again';
+        statusLine = 'TO BE CONTINUED — [R] play again';
       } else {
         subline    = 'chain complete  —  [SPACE] next level   [R] retry';
         statusLine = 'ACTIVATED — [SPACE] next level   [R] retry';

@@ -534,71 +534,367 @@ export const LEVELS: LevelData[] = [
   },
 
   // ── Level 16 ─────────────────────────────────────────────────────────────────
-  // "The Divide" — two outputs, corners mandatory, zero spares, no pressure.
+  // "The Right Angle" — single target off-axis; introduces corner pieces.
   //
-  // The path MUST make 90° turns at two specific cells. Only a correctly-rotated
-  // corner gear works there — the walls leave no other direction to exit.
-  // If the corner is placed with wrong rotation the chain breaks.
-  // The queue has only 15 gears: not enough to fill all 17 cells with gears alone,
-  // so the 2 corners in the queue MUST be used at the turning cells.
+  // Source and target are on different rows, so the path must change direction.
+  // Gears connect all 4 sides and CAN turn — but with 0 spares the 2 corners in
+  // the queue have no room to go on straight cells (a corner on a straight segment
+  // breaks the chain because it only exposes 2 adjacent ports). They MUST land on
+  // the two cells where the path bends 90°, and each bend requires a specific rotation.
   //
-  // Grid 10×7. Source (0,3). TARGET A (9,0). TARGET B (9,6).
+  // Grid 9×8.  Source (0,4).  Target (8,0).
+  // No locked cells — the open grid lets the player experiment freely.
   //
-  // Wall A (col 2): fully locked except row 3 — pre-placed H-axle forces
-  //                 all traffic through (2,3) horizontally.
-  // Wall B (col 5): rows 2-4 locked — cross at rows 0-1 or 5-6 only.
-  // Wall C (col 7): rows 1-5 locked — exit at row 0 (top) or row 6 (bottom) only.
-  // Wall D (col 4, rows 1-5 on top/bottom boundary): not needed — walls A-C already
-  //                 force the turning cells to be at (4,0) and (4,6).
+  // One minimal solution (many equivalent paths exist):
+  //   (1,4)→(2,4)→(3,4) → CORNER(4,4, rot=2 left+up)
+  //   → (4,3)→(4,2)→(4,1) → CORNER(4,0, rot=0 right+down)
+  //   → (5,0)→(6,0)→(7,0) → TARGET(8,0)
+  //   = 9 gears + 2 corners = 11 pieces, 0 spares.
   //
-  // Unique solution:
-  //   Shared (3 gears): (1,3) → AXLE(2,3) → (3,3) → (4,3)   ← branch here
-  //
-  //   Top arm — comes up col 4 then turns RIGHT into row 0:
-  //     (4,2) gear → (4,1) gear → CORNER(4,0, rot=0 right+down) → (5,0) gear
-  //     → (6,0) gear → (7,0) gear → (8,0) gear → TARGET A(9,0)
-  //     rot=0 accepts from below ("down" port) and exits right ("right" port) ✓
-  //     Any other rotation at (4,0) severs the chain.
-  //
-  //   Bottom arm — goes down col 4 then turns RIGHT into row 6:
-  //     (4,4) gear → (4,5) gear → CORNER(4,6, rot=3 up+right) → (5,6) gear
-  //     → (6,6) gear → (7,6) gear → (8,6) gear → TARGET B(9,6)
-  //     rot=3 accepts from above ("up" port) and exits right ("right" port) ✓
-  //
-  //   Player pieces: 3 shared + 2+1corner+4 top + 2+1corner+4 bottom = 17 total
-  //   Queue: 15 gears + 2 corners = 17 pieces, 0 spares.
+  //   rot=2 (left+up): accepts from right "left" port, exits up ✓
+  //   rot=0 (right+down): accepts from below "down" port, exits right ✓
   {
     id:          'level_16',
-    title:       'Level 16 — The Divide',
+    title:       'Level 16 — The Right Angle',
+    cols:        9,
+    rows:        8,
+    sourceCol:   0,
+    sourceRow:   4,
+    targetCol:   8,
+    targetRow:   0,
+    lockedCells: [],
+    queue: [
+      'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear',
+    ], // 9 gears + 2 corners = 11 pieces, zero spares
+    instruction: 'New piece: the corner gear. It only connects two sides — rotation matters.',
+  },
+
+  // ── Level 17 ─────────────────────────────────────────────────────────────────
+  // "The Serpentine" — two outputs, FOUR corners (all different rotations),
+  //                    zero spares, no pressure.
+  //
+  // Each arm of the path must make TWO 90° turns. A corner with the wrong
+  // rotation severs the chain. All four corners have different rotations, so
+  // guessing doesn't help — the player must reason from the wall geometry.
+  //
+  // Grid 10×8. Source (0,3). TARGET A (9,1). TARGET B (9,6).
+  //
+  // Wall A (col 2): rows 0-2 and 4-7 locked — pre-placed H-axle at (2,3) is
+  //                 the only passage; all traffic must cross horizontally.
+  // Wall B (col 5): rows 2-5 locked — paths cross col 5 only at rows 0-1 or 6-7.
+  // Wall C (col 7): rows 2-5 locked — same constraint at col 7.
+  //
+  // Unique-structure solution (multiple arm routings possible, all use same pattern):
+  //
+  //   Shared trunk (3 gears):
+  //     (1,3) → H-AXLE(2,3) → (3,3) → (4,3)  ← branch here
+  //
+  //   TOP ARM — goes up, turns right, turns down, arrives at TARGET A (9,1):
+  //     (4,2)→(4,1)→(4,0)  → CORNER-1(4,0, rot=0 right+down)
+  //                            [accepts from below "down" port, exits right "right" port]
+  //     (5,0)→(6,0)→(7,0)  → CORNER-2(7,0, rot=1 down+left)
+  //                            [accepts from left "left" port, exits down "down" port]
+  //     (7,1)→(8,1) → TARGET A(9,1)
+  //     → 8 gears + 2 corners
+  //
+  //   BOTTOM ARM — goes down, turns right, turns up, arrives at TARGET B (9,6):
+  //     (4,4)→(4,5)→(4,6)→(4,7) → CORNER-3(4,7, rot=3 up+right)
+  //                                  [accepts from above "up" port, exits right "right" port]
+  //     (5,7)→(6,7)→(7,7)         → CORNER-4(7,7, rot=2 left+up)
+  //                                  [accepts from left "left" port, exits up "up" port]
+  //     (7,6)→(8,6) → TARGET B(9,6)
+  //     → 9 gears + 2 corners
+  //
+  //   Total player pieces: 3 + 8 + 9 = 20 gears + 4 corners = 24, zero spares.
+  //
+  //   All 4 corners use DIFFERENT rotations (0, 1, 2, 3) — the player cannot
+  //   copy-paste the same rotation and must reason about each turn independently.
+  {
+    id:          'level_17',
+    title:       'Level 17 — The Serpentine',
     cols:        10,
-    rows:        7,
+    rows:        8,
     sourceCol:   0,
     sourceRow:   3,
     targetCol:   9,
-    targetRow:   0,
+    targetRow:   1,
     extraTargets: [{ col: 9, row: 6 }],
     lockedCells: [
-      // Wall A: col 2 fully blocked except row 3 (axle lives there)
+      // Wall A: col 2 fully blocked except row 3
       { col: 2, row: 0 }, { col: 2, row: 1 }, { col: 2, row: 2 },
-      { col: 2, row: 4 }, { col: 2, row: 5 }, { col: 2, row: 6 },
-      // Wall B: col 5 center block
-      { col: 5, row: 2 }, { col: 5, row: 3 }, { col: 5, row: 4 },
-      // Wall C: col 7 gate — only rows 0 and 6 open
-      { col: 7, row: 1 }, { col: 7, row: 2 }, { col: 7, row: 3 },
-      { col: 7, row: 4 }, { col: 7, row: 5 },
+      { col: 2, row: 4 }, { col: 2, row: 5 }, { col: 2, row: 6 }, { col: 2, row: 7 },
+      // Wall B: col 5 center band
+      { col: 5, row: 2 }, { col: 5, row: 3 }, { col: 5, row: 4 }, { col: 5, row: 5 },
+      // Wall C: col 7 center band
+      { col: 7, row: 2 }, { col: 7, row: 3 }, { col: 7, row: 4 }, { col: 7, row: 5 },
     ],
     prePlacedParts: [
-      { col: 2, row: 3, part: { type: 'axle', rotation: 0 } },  // H-axle chokepoint
+      { col: 2, row: 3, part: { type: 'axle', rotation: 0 } },
     ] satisfies PrePlacedPart[],
-    //   queue order: get gears to build the shared trunk and both straight arms,
-    //   corners arrive when the arms need to turn (positions 6 and 11).
+    // Corners arrive at queue positions 5, 10, 16, 21 — staggered so both
+    // arms need to be planned before the first corner is placed.
     queue: [
-      'gear','gear','gear','gear','gear',
+      'gear', 'gear', 'gear', 'gear',
       'corner',
-      'gear','gear','gear','gear',
+      'gear', 'gear', 'gear', 'gear',
       'corner',
-      'gear','gear','gear','gear','gear','gear',
-    ], // 15 gears + 2 corners = 17, zero spares
-    instruction: 'The corners must turn the path — wrong rotation breaks the chain.',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear',
+    ], // 20 gears + 4 corners = 24 pieces, zero spares
+    instruction: 'Four corners — four different rotations. One wrong turn and the whole machine fails.',
+  },
+
+  // ── Level 18 ─────────────────────────────────────────────────────────────────
+  // "The Trinity Engines" — THREE outputs, four corners (all different rotations),
+  //                          one axle, zero spares, no pressure.
+  //
+  // Three arms branch from a shared trunk: top arm curves up-right to TARGET A,
+  // center arm goes straight to TARGET B, bottom arm curves down-right to TARGET C.
+  // Both curved arms make two 90° turns each — four corners total, all different rotations.
+  // The axle in the queue must be correctly oriented for wherever the player places it.
+  //
+  // Grid 11×9. Source (0,4).
+  //   TARGET A: (10,1)   TARGET B: (10,4)   TARGET C: (10,7)
+  //
+  // Wall A (col 2): rows 0-3 and 5-8 locked — pre-placed H-axle at (2,4) is
+  //                 the sole passage; entire flow must cross at row 4.
+  // Wall B (col 5): rows 1-3 and 5-7 locked — arms cross at rows 0, 4, 8 only.
+  // Wall C (col 8): rows 2-3 and 5-6 locked — arms cross at rows 0,1,4,7,8.
+  // Wall D (col 9): rows 0, 8 locked — prevents bypassing corner at col 8 top/bottom.
+  // Wall E: (7,1) and (7,7) locked — seals alternate route around col-8 corners.
+  //
+  // Unique solution:
+  //   Shared trunk:  (1,4) → H-AXLE(2,4) → (3,4) → (4,4)  ← three-way branch
+  //
+  //   TOP ARM:   (4,3)→(4,2)→(4,1) → CORNER-1(4,0, rot=0 right+down)
+  //              → (5,0)→(6,0)→(7,0) → CORNER-2(8,0, rot=1 down+left)
+  //              → (8,1)→(9,1) → TARGET A(10,1)
+  //              [rot=0: enters from below "down", exits right "right"  ✓]
+  //              [rot=1: enters from left "left",  exits down "down"     ✓]
+  //
+  //   CENTER ARM: (5,4)→(6,4)→(7,4)→(8,4)→(9,4) → TARGET B(10,4)
+  //
+  //   BOTTOM ARM: (4,5)→(4,6)→(4,7) → CORNER-3(4,8, rot=3 up+right)
+  //               → (5,8)→(6,8)→(7,8) → CORNER-4(8,8, rot=2 left+up)
+  //               → (8,7)→(9,7) → TARGET C(10,7)
+  //               [rot=3: enters from above "up",  exits right "right"  ✓]
+  //               [rot=2: enters from left "left",  exits up "up"        ✓]
+  //
+  //   All four corners use DIFFERENT rotations (0, 1, 3, 2).
+  //   Player pieces: 3 shared + 8 top + 5 center + 8 bottom = 24 positions
+  //   = 23 gears + 4 corners + 1 axle = 28 pieces, zero spares.
+  //   (One gear from the trunk/arms is replaced by the queue axle — any straight cell.)
+  {
+    id:          'level_18',
+    title:       'Level 18 — The Trinity Engines',
+    cols:        11,
+    rows:        9,
+    sourceCol:   0,
+    sourceRow:   4,
+    targetCol:   10,
+    targetRow:   1,
+    extraTargets: [{ col: 10, row: 4 }, { col: 10, row: 7 }],
+    lockedCells: [
+      // Wall A: col 2 fully blocked except row 4 (H-axle lives there)
+      { col: 2, row: 0 }, { col: 2, row: 1 }, { col: 2, row: 2 }, { col: 2, row: 3 },
+      { col: 2, row: 5 }, { col: 2, row: 6 }, { col: 2, row: 7 }, { col: 2, row: 8 },
+      // Wall B: col 5 center band — rows 1-3 and 5-7 locked
+      { col: 5, row: 1 }, { col: 5, row: 2 }, { col: 5, row: 3 },
+      { col: 5, row: 5 }, { col: 5, row: 6 }, { col: 5, row: 7 },
+      // Wall C: col 8 partial — rows 2-3 and 5-6 locked
+      { col: 8, row: 2 }, { col: 8, row: 3 },
+      { col: 8, row: 5 }, { col: 8, row: 6 },
+      // Wall D: col 9 top and bottom — prevents corner bypass
+      { col: 9, row: 0 }, { col: 9, row: 8 },
+      // Wall E: seals alternate shortcut around the col-8 corners
+      { col: 7, row: 1 }, { col: 7, row: 7 },
+    ],
+    prePlacedParts: [
+      { col: 2, row: 4, part: { type: 'axle', rotation: 0 } }, // H-axle chokepoint
+    ] satisfies PrePlacedPart[],
+    // Corners arrive staggered; axle appears mid-queue.
+    // Both arms must be mentally mapped before the first corner is placed.
+    queue: [
+      'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear',
+      'axle',
+      'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+    ], // 23 gears + 4 corners + 1 axle = 28 pieces, zero spares
+    instruction: 'Three engines, four turns — plan all three arms before you place the first corner.',
+  },
+
+  // ── Level 19 ─────────────────────────────────────────────────────────────────
+  // "The Four Chambers" — FOUR outputs, SIX corners, one axle, zero spares.
+  //
+  // Source at row 5 (center). Four arms reach targets at rows 1, 4, 6, 9.
+  // Outer arms (rows 1 and 9) each turn once at column 4 then go straight.
+  // Inner arms (rows 4 and 6) must detour around Wall B (col 7 rows 3-7),
+  // each making two 90° turns — six corners total across all four arms.
+  //
+  // Grid 11×11. Source (0,5). Pre-placed H-axle at (2,5).
+  //   TARGET A: (10,1)   TARGET B: (10,4)   TARGET C: (10,6)   TARGET D: (10,9)
+  //
+  // Wall A (col 2): rows 0-4 and 6-10 locked — axle at (2,5) is the sole passage.
+  // Wall B (col 7): rows 3-7 locked — forces inner arms to detour via rows 2 and 8.
+  //
+  // Solution:
+  //   Shared trunk: (1,5) → H-AXLE(2,5) → (3,5) → (4,5)
+  //
+  //   ARM A (TARGET row 1): up through col 4 → CORNER-A1(4,1, rot=0 right+down)
+  //                         → row 1 right → (9,1) → TARGET A(10,1)
+  //   ARM B (TARGET row 4): right to (5,4) → CORNER-B1(6,4, rot=2 left+up)
+  //                         → up through col 6 → (6,2) → (7,2) → CORNER-B2(8,2, rot=1 down+left)
+  //                         → down to (8,4) → (9,4) → TARGET B(10,4)
+  //   ARM C (TARGET row 6): right to (5,6) → CORNER-C1(6,6, rot=1 down+left)
+  //                         → down through col 6 → (6,8) → (7,8) → CORNER-C2(8,8, rot=2 left+up)
+  //                         → up to (8,6) → (9,6) → TARGET C(10,6)
+  //   ARM D (TARGET row 9): down through col 4 → CORNER-D1(4,9, rot=3 up+right)
+  //                         → row 9 right → (9,9) → TARGET D(10,9)
+  //
+  //   All 4 rotations appear (0,1,2,3); inner arms are mirror-symmetric.
+  //   Pieces: 3 shared + 8+1c A + 7+2c B + 7+2c C + 8+1c D
+  //         = 33 gears + 6 corners → replace 1 gear with queue axle
+  //         = 32 gears + 6 corners + 1 axle = 39 pieces, zero spares.
+  {
+    id:          'level_19',
+    title:       'Level 19 — The Four Chambers',
+    cols:        11,
+    rows:        11,
+    sourceCol:   0,
+    sourceRow:   5,
+    targetCol:   10,
+    targetRow:   1,
+    extraTargets: [{ col: 10, row: 4 }, { col: 10, row: 6 }, { col: 10, row: 9 }],
+    lockedCells: [
+      // Wall A: col 2 fully blocked except row 5 (axle)
+      { col: 2, row: 0 }, { col: 2, row: 1 }, { col: 2, row: 2 }, { col: 2, row: 3 }, { col: 2, row: 4 },
+      { col: 2, row: 6 }, { col: 2, row: 7 }, { col: 2, row: 8 }, { col: 2, row: 9 }, { col: 2, row: 10 },
+      // Wall B: col 7 center band — forces inner arms to detour
+      { col: 7, row: 3 }, { col: 7, row: 4 }, { col: 7, row: 5 },
+      { col: 7, row: 6 }, { col: 7, row: 7 },
+    ],
+    prePlacedParts: [
+      { col: 2, row: 5, part: { type: 'axle', rotation: 0 } },
+    ] satisfies PrePlacedPart[],
+    // Corners arrive every ~6 pieces; axle appears mid-queue.
+    queue: [
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'axle',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear',
+    ], // 32 gears + 6 corners + 1 axle = 39 pieces, zero spares
+    instruction: 'Four engines, six turns — map every arm before the first corner arrives.',
+  },
+
+  // ── Level 20 ─────────────────────────────────────────────────────────────────
+  // "The Grand Machine" — FOUR outputs, EIGHT corners (all rotations, some repeated),
+  //                        one axle, zero spares, no pressure.
+  //
+  // Every arm makes exactly two 90° turns — the most complex routing in the game.
+  // Two wall barriers (col 7 and col 11) force all four arms to detour, and the
+  // inner arms meet at a shared junction before diverging to their final targets.
+  //
+  // Grid 14×11. Source (0,5). Pre-placed H-axle at (2,5).
+  //   TARGET A: (13,1)   TARGET B: (13,4)   TARGET C: (13,6)   TARGET D: (13,9)
+  //
+  // Wall A (col 2): rows 0-4 and 6-10 locked — axle at (2,5) is the sole entry.
+  // Wall B (col 7): rows 3-7 locked — outer arms cross at rows 1/9; inner arms detour.
+  // Wall C (col 11): rows 1-4 and 6-9 locked — all arms cross via rows 0, 5, or 10.
+  //
+  // Solution (all arms must be planned before the first corner arrives):
+  //
+  //   Shared trunk: (1,5) → H-AXLE(2,5) → (3,5) → (4,5)
+  //
+  //   ARM A (row 1): up col 4 → CORNER-A1(4,1, rot=0 right+down) → row 1 right
+  //                  → col10 up to row 0 → (11,0) → CORNER-A2(12,0, rot=1 down+left)
+  //                  → (12,1) → TARGET A(13,1)
+  //
+  //   ARM B (row 4): right to (5,4) → CORNER-B1(6,4, rot=2 left+up) → up col 6
+  //                  → (7,2) row 2 right → CORNER-B2(10,2, rot=1 down+left)
+  //                  → down col 10 → shared junction (10,5)→(11,5)→(12,5)→(12,4)
+  //                  → TARGET B(13,4)
+  //
+  //   ARM C (row 6): right to (5,6) → CORNER-C1(6,6, rot=1 down+left) → down col 6
+  //                  → (7,8) row 8 right → CORNER-C2(10,8, rot=2 left+up)
+  //                  → up col 10 → shared junction (10,5)→(11,5)→(12,5)→(12,6)
+  //                  → TARGET C(13,6)
+  //
+  //   ARM D (row 9): down col 4 → CORNER-D1(4,9, rot=3 up+right) → row 9 right
+  //                  → col10 down to row 10 → (11,10) → CORNER-D2(12,10, rot=2 left+up)
+  //                  → (12,9) → TARGET D(13,9)
+  //
+  //   Arms B and C share junction (10,5)→(11,5)→(12,5) before diverging to rows 4 and 6.
+  //   Total: 47 gears + 8 corners + 1 axle = 56 pieces, zero spares.
+  {
+    id:          'level_20',
+    title:       'Level 20 — The Grand Machine',
+    cols:        14,
+    rows:        11,
+    sourceCol:   0,
+    sourceRow:   5,
+    targetCol:   13,
+    targetRow:   1,
+    extraTargets: [{ col: 13, row: 4 }, { col: 13, row: 6 }, { col: 13, row: 9 }],
+    lockedCells: [
+      // Wall A: col 2 fully blocked except row 5 (axle)
+      { col: 2, row: 0 }, { col: 2, row: 1 }, { col: 2, row: 2 }, { col: 2, row: 3 }, { col: 2, row: 4 },
+      { col: 2, row: 6 }, { col: 2, row: 7 }, { col: 2, row: 8 }, { col: 2, row: 9 }, { col: 2, row: 10 },
+      // Wall B: col 7 center band — outer arms pass at rows 1/9; inner arms detour via rows 2/8
+      { col: 7, row: 3 }, { col: 7, row: 4 }, { col: 7, row: 5 },
+      { col: 7, row: 6 }, { col: 7, row: 7 },
+      // Wall C: col 11 — arms must cross at rows 0, 5, or 10 only
+      { col: 11, row: 1 }, { col: 11, row: 2 }, { col: 11, row: 3 }, { col: 11, row: 4 },
+      { col: 11, row: 6 }, { col: 11, row: 7 }, { col: 11, row: 8 }, { col: 11, row: 9 },
+    ],
+    prePlacedParts: [
+      { col: 2, row: 5, part: { type: 'axle', rotation: 0 } },
+    ] satisfies PrePlacedPart[],
+    // 8 corners staggered through a long queue — plan the full machine before placing.
+    queue: [
+      'gear', 'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'axle',
+      'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear', 'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear',
+      'corner',
+      'gear', 'gear', 'gear',
+      'corner',
+      'gear',
+    ], // 47 gears + 8 corners + 1 axle = 56 pieces, zero spares
+    instruction: 'The Grand Machine. Four arms, eight turns, zero margin for error.',
   },
 ];
