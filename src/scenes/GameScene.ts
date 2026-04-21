@@ -227,9 +227,10 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5).setDepth(22);
 
     const dismiss = () => {
-      this.tutorialActive = false;
       localStorage.setItem('steamheart_tutorial_seen', '1');
       [dim, panel, title, hint, ...labels].forEach(o => o.destroy());
+      // Defer flag reset so the current POINTER_DOWN cycle finishes before grid input re-enables
+      this.time.delayedCall(50, () => { this.tutorialActive = false; });
     };
 
     dim.on('pointerdown', dismiss);
