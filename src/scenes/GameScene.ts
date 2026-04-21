@@ -312,6 +312,7 @@ export class GameScene extends Phaser.Scene {
     const placed = this.grid.placeAt(coord.col, coord.row, { type: currentPart, rotation: this.state.rotation });
     if (placed) {
       this.sound.play('sfx-place', { volume: 0.6, mute: this.soundMuted });
+      this.grid.pulsePlacement();
       this.state.queue.shift();
       this.state.movesCount++;
       this.debugGraphics.clear();

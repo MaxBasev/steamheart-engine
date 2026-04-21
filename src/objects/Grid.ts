@@ -47,7 +47,7 @@ const GEAR_SPECS: GearSpec[] = [
   { textureKey: 'gear-3', toothCount: 20, sizeScale: GEAR_SIZE_LARGE  },
 ];
 
-const GEAR_DEG_PER_SEC = 45;
+const GEAR_DEG_PER_SEC = 90;
 
 const GRID_LINE_COLOR = 0x444444;
 const GRID_LINE_ALPHA = 0.7;
@@ -245,6 +245,18 @@ export class Grid {
       this.gearAngles.set(key, angle);
       img.setAngle(angle);
     }
+  }
+
+  /** Brief speed pulse when a part is placed — makes the grid feel alive. */
+  pulsePlacement(): void {
+    this.scene.tweens.killTweensOf(this);
+    this.scene.tweens.chain({
+      targets: this,
+      tweens: [
+        { gearSpeedMult: 2.5, duration: 80,  ease: 'Quad.easeOut' },
+        { gearSpeedMult: 1.0, duration: 350, ease: 'Quad.easeIn'  },
+      ],
+    });
   }
 
   /** Tween gear speed: win = spin up then settle, fail = slow to stop. */
