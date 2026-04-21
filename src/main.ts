@@ -1,14 +1,17 @@
 import Phaser from 'phaser';
-import { BootScene }    from './scenes/BootScene';
-import { PreloadScene } from './scenes/PreloadScene';
-import { GameScene }    from './scenes/GameScene';
+import { BootScene }        from './scenes/BootScene';
+import { PreloadScene }     from './scenes/PreloadScene';
+import { MainMenuScene }    from './scenes/MainMenuScene';
+import { LevelSelectScene } from './scenes/LevelSelectScene';
+import { CreditsScene }     from './scenes/CreditsScene';
+import { GameScene }        from './scenes/GameScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,           // WebGL with Canvas fallback
   width:  1280,
   height: 720,
   backgroundColor: '#111111',
-  scene: [BootScene, PreloadScene, GameScene],
+  scene: [BootScene, PreloadScene, MainMenuScene, LevelSelectScene, CreditsScene, GameScene],
   scale: {
     mode:       Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

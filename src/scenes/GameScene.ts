@@ -70,6 +70,10 @@ function saveBest(levelId: string, moves: number): void {
   }
 }
 
+function saveCompleted(levelId: string): void {
+  localStorage.setItem(`steamheart_completed_${levelId}`, '1');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class GameScene extends Phaser.Scene {
@@ -253,6 +257,9 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-SPACE', () => this.onSpaceKey());
     // R: rotate part-in-hand before activation; retry after activation
     this.input.keyboard!.on('keydown-R',     () => this.onRKey());
+    // M / Escape: return to main menu
+    this.input.keyboard!.on('keydown-M',   () => this.scene.start('MainMenuScene'));
+    this.input.keyboard!.on('keydown-ESC', () => this.scene.start('MainMenuScene'));
   }
 
   private onHover(pointer: Phaser.Input.Pointer): void {
@@ -346,6 +353,7 @@ export class GameScene extends Phaser.Scene {
     this.grid.animateGearSpeed(result.valid);
 
     if (result.valid) {
+      saveCompleted(this.currentLevel.id);
       this.cameras.main.flash(350, 160, 255, 160);
       this.sound.play('sfx-gears', { volume: 0.55, loop: false, mute: this.soundMuted });
       this.grid.setTargetActivated();
@@ -380,8 +388,11 @@ export class GameScene extends Phaser.Scene {
 
   private onRetry(): void {
     this.grid.destroy();
-    const target = (this.state.isWon && this.isFinalLevel()) ? 0 : this.currentLevelIndex;
-    this.scene.restart({ levelIndex: target });
+    if (this.state.isWon && this.isFinalLevel()) {
+      this.scene.start('MainMenuScene');
+    } else {
+      this.scene.restart({ levelIndex: this.currentLevelIndex });
+    }
   }
 
   // ── Game loop ──────────────────────────────────────────────────────────────
@@ -420,7 +431,6 @@ export class GameScene extends Phaser.Scene {
   // ── HUD ────────────────────────────────────────────────────────────────────
 
   private addHUD(level: LevelData): void {
-    const dim    = { fontSize: '13px', color: '#777777', fontFamily: 'monospace' };
     const dimmer = { fontSize: '12px', color: '#555555', fontFamily: 'monospace' };
 
     // Level title — top-left, slightly brighter
@@ -477,6 +487,15 @@ export class GameScene extends Phaser.Scene {
     this.movesText = this.add.text(width - 12, 30, 'Moves: 0', {
       fontSize: '12px', fontFamily: 'monospace', color: '#555555',
     }).setOrigin(1, 0);
+
+    // Menu button — top-left below instruction
+    const menuBtn = this.add.text(12, level.instruction ? 46 : 30, '[ESC] menu', {
+      fontSize: '11px', fontFamily: 'monospace', color: '#333333',
+    });
+    menuBtn.setInteractive({ useHandCursor: true })
+      .on('pointerover', () => menuBtn.setColor('#666666'))
+      .on('pointerout',  () => menuBtn.setColor('#333333'))
+      .on('pointerdown', () => this.scene.start('MainMenuScene'));
 
     // Sound toggle button
     this.addSoundToggle();
@@ -693,7 +712,7 @@ export class GameScene extends Phaser.Scene {
   // ── Result overlay ─────────────────────────────────────────────────────────
 
   private showResult(valid: boolean, isPressureFail = false): void {
-    const { width, height } = this.scale;
+    const { width } = this.scale;
     const g = this.resultGraphics;
     g.clear();
 

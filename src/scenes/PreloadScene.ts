@@ -61,7 +61,7 @@ export class PreloadScene extends Phaser.Scene {
       repeat:    -1,
     });
 
-    this.scene.start('GameScene');
+    this.scene.start('MainMenuScene');
   }
 
   // ── Loading screen ──────────────────────────────────────────────────────────
