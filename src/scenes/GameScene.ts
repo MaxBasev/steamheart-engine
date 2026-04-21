@@ -402,8 +402,9 @@ export class GameScene extends Phaser.Scene {
       this.onActivate();
     } else if (this.state.isWon && !this.isFinalLevel()) {
       this.onNextLevel();
+    } else if (this.state.isWon && this.isFinalLevel()) {
+      this.onRetry(); // onRetry routes final-level win → EndScene
     }
-    // After a fail or on the final win, Space does nothing — use R.
   }
 
   private onActivate(): void {
@@ -419,6 +420,7 @@ export class GameScene extends Phaser.Scene {
 
     if (result.valid) {
       saveCompleted(this.currentLevel.id);
+      saveBest(this.currentLevel.id, this.state.movesCount);
       this.cameras.main.flash(350, 160, 255, 160);
       this.sound.play('sfx-gears', { volume: 0.55, loop: false, mute: this.soundMuted });
       this.grid.setTargetActivated();
@@ -871,7 +873,6 @@ export class GameScene extends Phaser.Scene {
     if (valid) {
       headline = '✓  MACHINE ACTIVATED';
       const moves = this.state.movesCount;
-      saveBest(this.currentLevel.id, moves);
       const best   = loadBest(this.currentLevel.id)!;
       const isNew  = moves === best;
       const movesStr = `${moves} moves${isNew ? '  ★ best' : `  (best: ${best})`}`;
